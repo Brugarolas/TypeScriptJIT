@@ -102,6 +102,7 @@ jobs:
       shell: bash
       run: |
         brew install llvm@19
+        brew install libpthread-stubs
         echo "/usr/local/opt/llvm@19/bin" >> $GITHUB_PATH
         echo "LDFLAGS=-L/usr/local/opt/llvm@19/lib" >> $GITHUB_ENV
         echo "CPPFLAGS=-I/usr/local/opt/llvm@19/include" >> $GITHUB_ENV
@@ -114,8 +115,16 @@ jobs:
     - name: Configure GC
       continue-on-error: false
       working-directory: ${{github.workspace}}/__build/gc/ninja/release
-      shell: bash
-      run: cmake ../../../../3rdParty/gc-8.0.4 -G "Ninja" -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -Wno-dev -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DCMAKE_INSTALL_PREFIX=../../../../3rdParty/gc/release -Denable_threads=ON -Denable_cplusplus=OFF
+      shell: sh
+      run: |
+        cmake ../../../../3rdParty/gc-8.0.4 \
+        -G "Ninja" \
+        -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+        -Wno-dev \
+        -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+        -DCMAKE_INSTALL_PREFIX=../../../../3rdParty/gc/release \
+        -Denable_threads=ON \
+        -Denable_cplusplus=OFF
 
     - name: Build GC
       continue-on-error: false
