@@ -95,7 +95,7 @@ jobs:
     - name: Copy fixes to GC
       continue-on-error: false
       shell: bash
-      run: cp -ar ./docs/fix/gc/* ./3rdParty/gc-8.0.4/
+      run: cp -R ./docs/fix/gc/* ./3rdParty/gc-8.0.4/
 
     - name: Install LLVM and Clang
       continue-on-error: false
