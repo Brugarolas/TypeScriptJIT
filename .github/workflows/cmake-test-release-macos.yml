@@ -115,7 +115,17 @@ jobs:
       shell: bash
       run: |
         export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
-        cmake ../../../../tsc -G "Ninja" -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -Wno-dev
+        export LDFLAGS="-L/opt/homebrew/opt/llvm/lib"
+        export CPPFLAGS="-I/opt/homebrew/opt/llvm/include"
+        export CMAKE_PREFIX_PATH="/opt/homebrew/opt/llvm"
+        cmake ../../../../tsc -G "Ninja" \
+          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+          -DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang \
+          -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++ \
+          -DLLVM_DIR=/opt/homebrew/opt/llvm/lib/cmake/llvm \
+          -DClang_DIR=/opt/homebrew/opt/llvm/lib/cmake/clang \
+          -DMLIR_DIR=/opt/homebrew/opt/llvm/lib/cmake/mlir \
+          -Wno-dev
 
     - name: Build TypeScript Compiler
       working-directory: ${{github.workspace}}/__build/tsc/ninja/release
