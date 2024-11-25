@@ -120,14 +120,19 @@ jobs:
       working-directory: ${{github.workspace}}/__build/gc/ninja/release
       shell: sh
       run: |
+        export CC=/opt/homebrew/opt/llvm/bin/clang
+        export CXX=/opt/homebrew/opt/llvm/bin/clang++
+        export LDFLAGS="-L/opt/homebrew/opt/llvm/lib -Wl,-rpath,/opt/homebrew/opt/llvm/lib"
+        export CPPFLAGS="-I/opt/homebrew/opt/llvm/include"
+        export CMAKE_PREFIX_PATH="/opt/homebrew/opt/llvm"
         cmake ../../../../3rdParty/gc-8.0.4 \
-        -G "Ninja" \
-        -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
-        -Wno-dev \
-        -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-        -DCMAKE_INSTALL_PREFIX=../../../../3rdParty/gc/release \
-        -Denable_threads=ON \
-        -Denable_cplusplus=OFF
+          -DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang \
+          -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++ \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_SHARED_LIBS=OFF \
+          -Denable_cplusplus=ON \
+          -Denable_threads=ON \
+          -DCMAKE_OSX_ARCHITECTURES=arm64
 
     - name: Build GC
       continue-on-error: false
