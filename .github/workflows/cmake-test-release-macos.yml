@@ -101,11 +101,12 @@ jobs:
       continue-on-error: false
       shell: bash
       run: |
-        brew install llvm@19
-        brew install libpthread-stubs
-        echo "/usr/local/opt/llvm@19/bin" >> $GITHUB_PATH
-        echo "LDFLAGS=-L/usr/local/opt/llvm@19/lib" >> $GITHUB_ENV
-        echo "CPPFLAGS=-I/usr/local/opt/llvm@19/include" >> $GITHUB_ENV
+        brew unlink pkg-config@0.29.2
+        brew install llvm
+        echo 'export PATH="/opt/homebrew/opt/llvm/bin:$PATH"' >> $HOME/.bash_profile
+        echo 'export LDFLAGS="-L/opt/homebrew/opt/llvm/lib"' >> $HOME/.bash_profile
+        echo 'export CPPFLAGS="-I/opt/homebrew/opt/llvm/include"' >> $HOME/.bash_profile
+        source $HOME/.bash_profile
 
     - name: Install Ninja
       continue-on-error: false
