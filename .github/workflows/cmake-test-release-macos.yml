@@ -10,9 +10,6 @@ on:
 
 env:
   BUILD_TYPE: Release
-  CACHE_VERSION: v8
-  LLVM_VERSION: 19
-  LLVM_TARGZFILE: "https://www.dropbox.com/scl/fi/l9xrfupdbwqbnckr5g36p/llvm_19_1_3_release.tgz?rlkey=xubw01vl6ey3xszbph32xqfip&st=okz2ghqx&dl=1"
 
 jobs:
   build:
@@ -20,52 +17,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-
-    - name: Cache Build 3rd Party
-      id: cache-3rd-party
-      uses: actions/cache@v2
-      with:
-        path: __build/llvm/ninja
-        key: ${{ runner.os }}-build-llvm-${{ env.LLVM_VERSION }}-${{ env.CACHE_VERSION }}
-
-    - name: Cache 3rd Party binaries
-      id: cache-3rd-party-binary
-      uses: actions/cache@v2
-      with:
-        path: 3rdParty
-        key: ${{ runner.os }}-3rd-party-${{ env.LLVM_VERSION }}-${{ env.CACHE_VERSION }}
-
-    - name: Cache 3rd Party binaries - LLVM ${{ env.LLVM_VERSION }} Release
-      id: cache-3rd-party-binary-llvm-release
-      uses: actions/cache@v2
-      with:
-        path: llvm_${{ env.LLVM_VERSION }}_release.tgz
-        key: ${{ runner.os }}-3rd-party-llvm-${{ env.LLVM_VERSION }}-release-${{ env.CACHE_VERSION }}
-
-    - name: Delete __Build TS folders
-      continue-on-error: true
-      run: rm -R ./__build/tsc/ninja/release
-      shell: bash
-
-    - name: Create __Build Folders
-      run: mkdir -p ./__build/tsc/ninja/release; mkdir -p ./__build/gc/ninja/release
-      shell: bash
-
-    - name: Download 3rd party - LLVM
-      continue-on-error: true
-      shell: bash
-      run: |
-        if test ! -f "llvm_${{ env.LLVM_VERSION }}_release.tgz"; then
-            curl --insecure -L "${{ env.LLVM_TARGZFILE }}" --output llvm_${{ env.LLVM_VERSION }}_release.tgz
-        fi
-
-    - name: UnZip 3rd party - LLVM
-      continue-on-error: false
-      shell: bash
-      run:  |
-        if test -f "llvm_${{ env.LLVM_VERSION }}_release.tgz"; then
-            file llvm_${{ env.LLVM_VERSION }}_release.tgz; mkdir -p ./3rdParty/llvm; tar -xf llvm_${{ env.LLVM_VERSION }}_release.tgz -C ./3rdParty/llvm/
-        fi      
 
     - name: Download 3rd party source - GC
       continue-on-error: true
@@ -115,6 +66,10 @@ jobs:
       shell: bash
       run: brew install ninja
 
+    - name: Create Build Directories
+      shell: bash
+      run: mkdir -p ./__build/tsc/ninja/release ./__build/gc/ninja/release
+
     - name: Configure GC
       continue-on-error: false
       working-directory: ${{github.workspace}}/__build/gc/ninja/release
@@ -159,14 +114,14 @@ jobs:
       working-directory: ${{github.workspace}}/__build/tsc/ninja/release
       shell: bash
       run: |
-        export PATH="${{github.workspace}}/3rdParty/llvm/release/bin:$PATH"
+        export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
         cmake ../../../../tsc -G "Ninja" -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -Wno-dev
 
     - name: Build TypeScript Compiler
       working-directory: ${{github.workspace}}/__build/tsc/ninja/release
       shell: bash
       run: |
-        export PATH="${{github.workspace}}/3rdParty/llvm/release/bin:$PATH"
+        export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
         cmake --build . --config ${{ env.BUILD_TYPE }} -j 4
 
     - name: Test
@@ -174,4 +129,4 @@ jobs:
       shell: bash
       run: ctest -j1 -C ${{ env.BUILD_TYPE }} -T test --output-on-failure -T test --output-on-failure
       env:
-        LLVM_SYMBOLIZER_PATH: ${{github.workspace}}/3rdParty/llvm/release/bin 
+        LLVM_SYMBOLIZER_PATH: /opt/homebrew/opt/llvm/bin 
