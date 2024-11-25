@@ -132,7 +132,10 @@ jobs:
           -DBUILD_SHARED_LIBS=OFF \
           -Denable_cplusplus=ON \
           -Denable_threads=ON \
-          -DCMAKE_OSX_ARCHITECTURES=arm64
+          -DCMAKE_OSX_ARCHITECTURES=arm64 \
+          -DCMAKE_CXX_STANDARD=14 \
+          -DCMAKE_CXX_STANDARD_REQUIRED=ON \
+          -DCMAKE_CXX_FLAGS="-Wno-deprecated-declarations"
 
     - name: Build GC
       continue-on-error: false
