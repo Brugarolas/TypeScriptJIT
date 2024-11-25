@@ -155,20 +155,41 @@ jobs:
       shell: bash
       run: ls -l
 
-    - name: Configure
-      continue-on-error: false
-      working-directory: ${{github.workspace}}/__build/tsc/ninja/release
-      shell: bash
-      run: cmake ../../../../tsc -G "Ninja" -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -Wno-dev
+    - name: Configure LLVM
+      working-directory: ${{github.workspace}}
+      run: |
+        cmake -S ./3rdParty/llvm-project/llvm -B __build/llvm/ninja/release \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DLLVM_ENABLE_PROJECTS="mlir" \
+          -DLLVM_BUILD_EXAMPLES=OFF \
+          -DLLVM_TARGETS_TO_BUILD="AArch64" \
+          -DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang \
+          -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++ \
+          -DCMAKE_INSTALL_PREFIX="${{github.workspace}}/3rdParty/llvm/release" \
+          -DCMAKE_OSX_ARCHITECTURES=arm64 \
+          -DLLVM_USE_HOST_TOOLS=ON \
+          -DLLVM_ENABLE_ASSERTIONS=ON
 
-    - name: Build
-      continue-on-error: false
+    - name: Build LLVM
+      working-directory: ${{github.workspace}}/__build/llvm/ninja/release
+      run: |
+        cmake --build . --target install --config Release -j 4
+
+    - name: Configure TypeScript Compiler
       working-directory: ${{github.workspace}}/__build/tsc/ninja/release
       shell: bash
-      run: cmake --build . --config ${{ env.BUILD_TYPE }} -j 4
+      run: |
+        export PATH="${{github.workspace}}/3rdParty/llvm/release/bin:$PATH"
+        cmake ../../../../tsc -G "Ninja" -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -Wno-dev
+
+    - name: Build TypeScript Compiler
+      working-directory: ${{github.workspace}}/__build/tsc/ninja/release
+      shell: bash
+      run: |
+        export PATH="${{github.workspace}}/3rdParty/llvm/release/bin:$PATH"
+        cmake --build . --config ${{ env.BUILD_TYPE }} -j 4
 
     - name: Test
-      continue-on-error: false
       working-directory: ${{github.workspace}}/__build/tsc/ninja/release
       shell: bash
       run: ctest -j1 -C ${{ env.BUILD_TYPE }} -T test --output-on-failure -T test --output-on-failure
