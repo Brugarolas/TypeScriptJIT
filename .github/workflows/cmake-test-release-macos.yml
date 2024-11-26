@@ -13,7 +13,8 @@ env:
 
 jobs:
   build:
-    runs-on: macos-12
+    runs-on: macos-latest
+    # runs-on: macos-12
     # use this for apple silicon cpus
     # runs-on: macos-latest
 
