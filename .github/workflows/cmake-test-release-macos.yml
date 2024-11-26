@@ -52,9 +52,7 @@ jobs:
       continue-on-error: false
       shell: bash
       run: |
-        brew unlink pkg-config@0.29.2
         brew install pkgconf
-        brew link --overwrite pkgconf
         brew install llvm
         echo 'export PATH="/opt/homebrew/opt/llvm/bin:$PATH"' >> $HOME/.bash_profile
         echo 'export LDFLAGS="-L/opt/homebrew/opt/llvm/lib"' >> $HOME/.bash_profile
