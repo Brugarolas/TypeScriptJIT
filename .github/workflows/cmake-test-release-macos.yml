@@ -13,7 +13,9 @@ env:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-12
+    # use this for apple silicon cpus
+    # runs-on: macos-latest
 
     steps:
     - uses: actions/checkout@v2
@@ -84,10 +86,13 @@ jobs:
           -DBUILD_SHARED_LIBS=OFF \
           -Denable_cplusplus=ON \
           -Denable_threads=ON \
-          -DCMAKE_OSX_ARCHITECTURES=arm64 \
+          -DCMAKE_OSX_ARCHITECTURES=x86_64 \
           -DCMAKE_CXX_STANDARD=14 \
           -DCMAKE_CXX_STANDARD_REQUIRED=ON \
           -DCMAKE_CXX_FLAGS="-Wno-deprecated-declarations"
+
+    # TODO: Use this for apple silicon cpus
+      # -DCMAKE_OSX_ARCHITECTURES=arm64 \
 
     - name: Build GC
       continue-on-error: false
