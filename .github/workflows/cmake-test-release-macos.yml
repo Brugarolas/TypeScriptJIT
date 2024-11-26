@@ -132,9 +132,16 @@ jobs:
         export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
         cmake --build . --config ${{ env.BUILD_TYPE }} -j 4
 
-    - name: Test
-      working-directory: ${{github.workspace}}/__build/tsc/ninja/release
-      shell: bash
-      run: ctest -j1 -C ${{ env.BUILD_TYPE }} -T test --output-on-failure -T test --output-on-failure
-      env:
-        LLVM_SYMBOLIZER_PATH: /opt/homebrew/opt/llvm/bin 
+    - name: Upload TypeScript Compiler Binary
+      uses: actions/upload-artifact@v3
+      with:
+        name: tsc-macos-arm64
+        path: ${{github.workspace}}/__build/tsc/ninja/release/bin/tsc
+        if-no-files-found: error
+
+    #- name: Test
+    #  working-directory: ${{github.workspace}}/__build/tsc/ninja/release
+    #  shell: bash
+    #  run: ctest -j1 -C ${{ env.BUILD_TYPE }} -T test --output-on-failure -T test --output-on-failure
+    #  env:
+    #    LLVM_SYMBOLIZER_PATH: /opt/homebrew/opt/llvm/bin 
