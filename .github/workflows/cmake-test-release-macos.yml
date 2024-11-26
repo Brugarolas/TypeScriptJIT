@@ -122,7 +122,7 @@ jobs:
           -DLLVM_DIR=/opt/homebrew/opt/llvm/lib/cmake/llvm \
           -DClang_DIR=/opt/homebrew/opt/llvm/lib/cmake/clang \
           -DMLIR_DIR=/opt/homebrew/opt/llvm/lib/cmake/mlir \
-          -DCMAKE_CXX_FLAGS="-Wno-dollar-in-identifier-extension" \
+          -DCMAKE_CXX_FLAGS="-std=c++20 -Wno-dollar-in-identifier-extension -Wno-deprecated-declarations -Wno-c++20-extensions" \
           -Wno-dev
 
     - name: Build TypeScript Compiler
