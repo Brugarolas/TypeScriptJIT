@@ -21,6 +21,12 @@ namespace cl = llvm::cl;
 
 extern cl::opt<std::string> inputFilename;
 
+int compileTypeScriptFileIntoMLIR(mlir::MLIRContext &context, llvm::SourceMgr &sourceMgr, mlir::OwningOpRef<mlir::ModuleOp> &module, CompileOptions &compileOptions)
+{
+    auto fileName = llvm::StringRef(inputFilename);
+    return compileTypeScriptFileIntoMLIR(&context, fileName, &sourceMgr, &module, &compileOptions);
+}
+
 int compileTypeScriptFileIntoMLIR(mlir::MLIRContext &context, llvm::StringRef fileName, llvm::SourceMgr &sourceMgr, mlir::OwningOpRef<mlir::ModuleOp> &module, CompileOptions &compileOptions)
 {   
     llvm::SmallString<128> absoluteFilePath("");

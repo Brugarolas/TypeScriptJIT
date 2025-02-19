@@ -1820,6 +1820,7 @@ struct VariableOpLowering : public TsLlvmPattern<mlir_ts::VariableOp>
 
         auto referenceType = varOp.getType();
         auto storageType = tch.convertType(referenceType.getElementType());
+        auto llvmReferenceType = storageType;
 
 #ifdef ALLOC_ALL_VARS_IN_HEAP
         auto isCaptured = true;
@@ -6418,6 +6419,14 @@ void TypeScriptToLLVMLoweringPass::runOnOperation()
     // in processing ops types will be changed by LLVM versions overtime, we need to have actual information about types 
     // when generate Debug Info
     if (tsLlvmContext.compileOptions.generateDebugInfo)
+    {
+        preserveTypesForDebugInfo(m, typeConverter);
+        setDIReturnTypesToFormOp(m, typeConverter);
+    }
+
+    LLVM_DEBUG(llvm::dbgs() << "\n!! BEFORE DUMP: \n" << m << "\n";);
+
+    if (failed(applyFullConversion(m, target, std::move(patterns))))
     {
         setDISubProgramTypesToFormOp(m, typeConverter, tsContext.compileOptions);
         preserveTypesForDebugInfo(m, typeConverter, tsContext.compileOptions);

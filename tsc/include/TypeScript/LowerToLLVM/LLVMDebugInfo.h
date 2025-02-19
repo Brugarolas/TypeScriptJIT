@@ -444,7 +444,7 @@ class LLVMDebugInfoHelper
 
         auto diTypeAttrUnion = getDIUnionType(location, unionType, file, line, scope);
 
-        return getDIStructType(MLIRHelper::getAnonymousName(unionType, "struct"), {
+        return getDIStructType(MLIRHelper::getAnonymousName(unionType, "union"), {
             {"type", diStrType},
             {"data", diTypeAttrUnion},
         }, file, line, scope);        
@@ -563,6 +563,29 @@ class LLVMDebugInfoHelper
         for (auto paramType : funcType.getParams())
         {
             elements.push_back(getDITypeScriptType(location, paramType, file, line, scope));  
+        }
+
+        auto subroutineType = LLVM::DISubroutineTypeAttr::get(context, elements);
+        return subroutineType;
+    }
+
+    LLVM::DISubroutineTypeAttr getDISubroutineType(LLVM::LLVMFunctionType funcType, LLVM::DIFileAttr file, uint32_t line, LLVM::DIScopeAttr scope)
+    {
+        llvm::SmallVector<LLVM::DITypeAttr> elements;
+        for (auto retType : funcType.getReturnTypes())
+        {
+            elements.push_back(getDITypeScriptType(retType, file, line, scope));  
+        }
+
+        if (funcType.getParams().size() > 0 &&  funcType.getReturnTypes().size() == 0)
+        {
+            // return type is null
+            elements.push_back(mlir::LLVM::DINullTypeAttr());
+        }
+
+        for (auto paramType : funcType.getParams())
+        {
+            elements.push_back(getDITypeScriptType(paramType, file, line, scope));  
         }
 
         auto subroutineType = LLVM::DISubroutineTypeAttr::get(context, elements);

@@ -5571,10 +5571,6 @@ class MLIRGenImpl
         // create return object
         NodeArray<ObjectLiteralElementLike> generatorObjectProperties;
 
-        // add step field
-        auto stepProp = nf.createPropertyAssignment(stepIdent, nf.createNumericLiteral(S("0"), TokenFlags::None));
-        generatorObjectProperties.push_back(stepProp);
-
         // create body of next method
         NodeArray<Statement> nextStatements;
 
@@ -5633,6 +5629,10 @@ class MLIRGenImpl
         }
 
         generatorObjectProperties.push_back(nextMethodDecl);
+
+        // add step field
+        auto stepProp = nf.createPropertyAssignment(stepIdent, nf.createNumericLiteral(S("0"), TokenFlags::None));
+        generatorObjectProperties.push_back(stepProp);
 
         auto generatorObject = nf.createObjectLiteralExpression(generatorObjectProperties, false);
 
@@ -25671,8 +25671,7 @@ genContext);
     {
         auto fileId = getStringAttr(fileName);
         auto posLineChar = parser.getLineAndCharacterOfPosition(sourceFile, start);
-        auto begin = mlir::FileLineColLoc::get(builder.getContext(), fileId, 
-            posLineChar.line + 1, posLineChar.character + 1);
+        auto begin = mlir::FileLineColLoc::get(builder.getContext(), fileId, posLineChar.line + 1, posLineChar.character + 1);
         // if (length <= 1)
         // {
         //     return begin;

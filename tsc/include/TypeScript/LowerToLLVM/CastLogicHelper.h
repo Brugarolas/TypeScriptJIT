@@ -760,6 +760,12 @@ class CastLogicHelper
         // value to ref of value
         if (auto destPtr = dyn_cast<LLVM::LLVMPointerType>(resLLVMType))
         {
+            if (destPtr.getElementType() == inLLVMType)
+            {
+                // alloc and return address
+                auto valueAddr = rewriter.create<mlir_ts::VariableOp>(loc, mlir_ts::RefType::get(inType), in, rewriter.getBoolAttr(false), rewriter.getIndexAttr(0));
+                return valueAddr;
+            }
             LLVM_DEBUG(llvm::dbgs() << "type 1: '" << inLLVMType << "', type 2: '" << resLLVMType << "'\n";);
 
             llvm_unreachable("review usage");
@@ -1076,8 +1082,9 @@ class CastLogicHelper
             return variableOp;
         }
 
-        auto valueAddr = rewriter.create<mlir_ts::VariableOp>(
-            loc, mlir_ts::RefType::get(in.getType()), in, rewriter.getBoolAttr(false), rewriter.getIndexAttr(0));
+        auto valueAddr = rewriter.create<mlir_ts::VariableOp>(loc, mlir_ts::RefType::get(in.getType()), in, rewriter.getBoolAttr(false), rewriter.getIndexAttr(0));
+
+        mlir::Value valueAddrAsLLVMType = rewriter.create<mlir_ts::DialectCastOp>(loc, tch.convertType(valueAddr.getType()), valueAddr);
 
         auto valueAddrAsLLVMType = rewriter.create<mlir_ts::DialectCastOp>(loc, tch.convertType(valueAddr.getType()), valueAddr);
         return valueAddrAsLLVMType;
