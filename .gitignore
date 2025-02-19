@@ -12,3 +12,5 @@ package-lock.json
 node_modules
 gc-*
 libatomic_ops-*
+
+.idea
