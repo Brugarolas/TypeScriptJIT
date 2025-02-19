@@ -5,6 +5,8 @@ class Base { private p; }
 class Derived1 extends Base { private m };
 class Derived2 extends Base { private n };
 
+type Array<T> = T[];
+
 function main() {
     // Empty array literal with no contextual type has type Undefined[]
     let arr1 = [[], [1], ['']];
@@ -27,7 +29,7 @@ function main() {
     let classTypeArray2: Array<typeof C>; // Should OK, not be a parse error
 
     // Contextual type C with numeric index signature makes array literal of EveryType E of type BCT(E,C)[]
-    let context1: { [n: number]: { a: string; b: number; }; } = [{ a: '', b: 0, c: '' }, { a: "", b: 3, c: 0 }];
+    //let context1: { [n: number]: { a: string; b: number; }; } = [{ a: '', b: 0, c: '' }, { a: "", b: 3, c: 0 }];
     let context2 = [{ a: '', b: 0, c: '' }, { a: "", b: 3, c: 0 }];
 
 

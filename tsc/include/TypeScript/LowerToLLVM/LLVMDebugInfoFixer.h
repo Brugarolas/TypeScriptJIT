@@ -22,15 +22,100 @@ namespace mlir_ts = mlir::typescript;
 namespace typescript
 {
 
+class LLVMDebugInfoHelperCreator
+{
+    LLVM::LLVMFuncOp llvmFuncOp;
+    const LLVMTypeConverter *typeConverter;
+    MLIRContext *context;
+    CompileOptions& compileOptions;
+
+public:
+    LLVMDebugInfoHelperCreator(LLVM::LLVMFuncOp llvmFuncOp, const LLVMTypeConverter *typeConverter, CompileOptions& compileOptions)
+        : llvmFuncOp(llvmFuncOp), typeConverter(typeConverter), compileOptions(compileOptions)
+    {
+        context = llvmFuncOp.getContext();
+    }
+
+    auto createSubProgramAttr() -> void
+    {
+        auto location = llvmFuncOp->getLoc();
+        if (auto funcLocWithSubprog = dyn_cast<mlir::FusedLocWith<mlir::LLVM::DISubprogramAttr>>(location))
+        {
+            return;
+        }
+
+        auto moduleOp = llvmFuncOp->getParentOp();
+        auto moduleLocation = moduleOp->getLoc();
+        if (auto funcLocWithCompileUnit = dyn_cast<mlir::FusedLocWith<mlir::LLVM::DICompileUnitAttr>>(moduleLocation))
+        {
+            auto compileUnit = funcLocWithCompileUnit.getMetadata();
+
+            LocationHelper lh(context);
+            LLVMTypeConverterHelper llvmtch(typeConverter);
+            LLVMDebugInfoHelper di(context, llvmtch, compileOptions);        
+
+            auto funcNameAttr = llvmFuncOp.getNameAttr();
+
+            // return type
+            auto [file, lineAndColumn] = lh.getLineAndColumnAndFile(location);
+            auto [line, column] = lineAndColumn;
+
+            SmallVector <mlir::LLVM::DITypeAttr> resultTypes;
+            for (auto resType : llvmFuncOp.getResultTypes())
+            {
+                auto diType = di.getDIType(location, {}, resType, file, line, file);
+                resultTypes.push_back(diType);
+            }
+
+            if (llvmFuncOp.getArgumentTypes().size() > 0 &&  llvmFuncOp.getResultTypes().size() == 0)
+            {
+                // return type is null
+                resultTypes.push_back(mlir::LLVM::DINullTypeAttr());
+            }
+
+            for (auto argType : llvmFuncOp.getArgumentTypes())
+            {
+                auto diType = di.getDIType(location, {}, argType, file, line, file);
+                resultTypes.push_back(diType);
+            }
+
+            auto subroutineTypeAttr = mlir::LLVM::DISubroutineTypeAttr::get(context, llvm::dwarf::DW_CC_normal, resultTypes);
+            auto subprogramAttr = mlir::LLVM::DISubprogramAttr::get(
+                context, 
+                DistinctAttr::create(mlir::UnitAttr::get(context)),
+                compileUnit, 
+                compileUnit, 
+                funcNameAttr, 
+                funcNameAttr, 
+                compileUnit.getFile(), 
+                line, 
+                line, 
+                LLVM::DISubprogramFlags::Pure, 
+                subroutineTypeAttr);
+
+            LLVM_DEBUG(llvm::dbgs() << "\n!! new prog attr: " << subprogramAttr << "\n");        
+
+            // we do not use replaceScope here as we are fixing metadata
+            auto newLoc = mlir::FusedLoc::get(location.getContext(), {location}, subprogramAttr);
+            llvmFuncOp->setLoc(newLoc);            
+        }        
+    }
+
+    void clear() {
+        llvmFuncOp->setLoc(mlir::UnknownLoc::get(llvmFuncOp.getContext()));
+    }
+};
+
 class LLVMDebugInfoHelperFixer
 {
     mlir_ts::FuncOp funcOp;
-    LLVMTypeConverter &typeConverter;
+    const LLVMTypeConverter *typeConverter;
     MLIRContext *context;
+    CompileOptions& compileOptions;
 
 public:
-    LLVMDebugInfoHelperFixer(mlir_ts::FuncOp funcOp, LLVMTypeConverter &typeConverter)
-        : funcOp(funcOp), typeConverter(typeConverter)
+    LLVMDebugInfoHelperFixer(mlir_ts::FuncOp funcOp, const LLVMTypeConverter *typeConverter, CompileOptions& compileOptions)
+        : funcOp(funcOp), typeConverter(typeConverter), compileOptions(compileOptions)
     {
         context = funcOp.getContext();
     }
@@ -41,7 +126,7 @@ public:
         {
             LocationHelper lh(context);
             LLVMTypeConverterHelper llvmtch(typeConverter);
-            LLVMDebugInfoHelper di(context, llvmtch);        
+            LLVMDebugInfoHelper di(context, llvmtch, compileOptions);        
 
             auto oldMetadata = funcLocWithSubprog.getMetadata();
             auto funcNameAttr = funcOp.getNameAttr();
@@ -53,7 +138,7 @@ public:
             SmallVector <mlir::LLVM::DITypeAttr> resultTypes;
             for (auto resType : funcOp.getResultTypes())
             {
-                auto diType = di.getDIType({}, resType, file, line, file);
+                auto diType = di.getDIType(location, {}, resType, file, line, file);
                 resultTypes.push_back(diType);
             }
 
@@ -65,13 +150,14 @@ public:
 
             for (auto argType : funcOp.getArgumentTypes())
             {
-                auto diType = di.getDIType({}, argType, file, line, file);
+                auto diType = di.getDIType(location, {}, argType, file, line, file);
                 resultTypes.push_back(diType);
             }
 
             auto subroutineTypeAttr = mlir::LLVM::DISubroutineTypeAttr::get(context, llvm::dwarf::DW_CC_normal, resultTypes);
             auto subprogramAttr = mlir::LLVM::DISubprogramAttr::get(
                 context, 
+                DistinctAttr::create(mlir::UnitAttr::get(context)),
                 oldMetadata.getCompileUnit(), 
                 oldMetadata.getScope(), 
                 oldMetadata.getName(), 
@@ -162,7 +248,7 @@ private:
             auto newLexicalBlockAttr = 
                 mlir::LLVM::DILexicalBlockAttr::get(
                     lexicalBlockAttr.getContext(), 
-                    newScope.cast<mlir::LLVM::DIScopeAttr>(), 
+                    mlir::cast<mlir::LLVM::DIScopeAttr>(newScope), 
                     lexicalBlockAttr.getFile(), 
                     lexicalBlockAttr.getLine(), 
                     lexicalBlockAttr.getColumn());   
@@ -180,7 +266,7 @@ private:
         if (localVarScope.getScope() == oldScope) {
             auto newLocalVar = mlir::LLVM::DILocalVariableAttr::get(
                 localVarScope.getContext(), 
-                newScope.cast<mlir::LLVM::DIScopeAttr>(), 
+                mlir::cast<mlir::LLVM::DIScopeAttr>(newScope), 
                 localVarScope.getName(), 
                 localVarScope.getFile(), 
                 localVarScope.getLine(), 
@@ -197,8 +283,9 @@ private:
         if (subprogScope.getScope() == oldScope) {
             auto newSubprogramAttr = mlir::LLVM::DISubprogramAttr::get(
                 subprogScope.getContext(), 
+                DistinctAttr::create(mlir::UnitAttr::get(subprogScope.getContext())),
                 subprogScope.getCompileUnit(), 
-                newScope.cast<mlir::LLVM::DIScopeAttr>(), 
+                mlir::cast<mlir::LLVM::DIScopeAttr>(newScope), 
                 subprogScope.getName(), 
                 subprogScope.getLinkageName(), 
                 subprogScope.getFile(), 
@@ -220,7 +307,7 @@ private:
         if (labelScope.getScope() == oldScope) {
             auto newLabel = mlir::LLVM::DILabelAttr::get(
                 labelScope.getContext(), 
-                newScope.cast<mlir::LLVM::DIScopeAttr>(), 
+                mlir::cast<mlir::LLVM::DIScopeAttr>(newScope), 
                 labelScope.getName(), 
                 labelScope.getFile(), 
                 labelScope.getLine());
@@ -231,19 +318,19 @@ private:
     }
 
     mlir::Attribute recreateMetadataForNewScope(mlir::Attribute currentMetadata, mlir::Attribute newScope, mlir::Attribute oldScope) {
-        if (auto lexicalBlockAttr = currentMetadata.dyn_cast_or_null<mlir::LLVM::DILexicalBlockAttr>()) {
+        if (auto lexicalBlockAttr = dyn_cast_or_null<mlir::LLVM::DILexicalBlockAttr>(currentMetadata)) {
             return recreateLexicalBlockForNewScope(lexicalBlockAttr, newScope, oldScope);
         }
 
-        if (auto localVarScope = currentMetadata.dyn_cast_or_null<mlir::LLVM::DILocalVariableAttr>()) {
+        if (auto localVarScope = dyn_cast_or_null<mlir::LLVM::DILocalVariableAttr>(currentMetadata)) {
             return recreateLocalVariableForNewScope(localVarScope, newScope, oldScope);
         }
 
-        if (auto subprogScope = currentMetadata.dyn_cast_or_null<mlir::LLVM::DISubprogramAttr>()) {
+        if (auto subprogScope = dyn_cast_or_null<mlir::LLVM::DISubprogramAttr>(currentMetadata)) {
             return recreateSubprogramForNewScope(subprogScope, newScope, oldScope);
         }
 
-        if (auto labelScope = currentMetadata.dyn_cast_or_null<mlir::LLVM::DILabelAttr>()) {
+        if (auto labelScope = dyn_cast_or_null<mlir::LLVM::DILabelAttr>(currentMetadata)) {
             return recreateLabelForNewScope(labelScope, newScope, oldScope);
         }
 

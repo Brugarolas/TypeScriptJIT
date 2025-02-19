@@ -43,12 +43,14 @@ class MLIRRTTIHelperVCWin32
 
     SmallVector<TypeNames> types;
 
+    CompileOptions& compileOptions;
+
   public:
     std::string catchableTypeInfoArrayRef;
     std::string throwInfoRef;
 
-    MLIRRTTIHelperVCWin32(mlir::OpBuilder &rewriter, mlir::ModuleOp &parentModule)
-        : rewriter(rewriter), parentModule(parentModule), mth(rewriter.getContext()), mlh()
+    MLIRRTTIHelperVCWin32(mlir::OpBuilder &rewriter, mlir::ModuleOp &parentModule, CompileOptions& compileOptions)
+        : rewriter(rewriter), parentModule(parentModule), mth(rewriter.getContext(), compileOptions), mlh(), compileOptions(compileOptions)
     {
         // setI32AsCatchType();
     }
@@ -138,7 +140,7 @@ class MLIRRTTIHelperVCWin32
         }
 
         auto normalizedType = mth.stripLiteralType(type);
-        if (auto enumType = normalizedType.dyn_cast<mlir_ts::EnumType>())
+        if (auto enumType = dyn_cast<mlir_ts::EnumType>(normalizedType))
         {
             normalizedType = enumType.getElementType();
         }
@@ -242,17 +244,23 @@ class MLIRRTTIHelperVCWin32
         return true;
     }
 
-    void seekLast(mlir::Block *block)
+    template <typename T>
+    void seekLastOp(mlir::Block *block)
     {
         // find last string
         auto lastUse = [&](mlir::Operation *op) {
-            if (auto globalOp = dyn_cast_or_null<mlir_ts::GlobalOp>(op))
+            if (auto globalOp = dyn_cast_or_null<T>(op))
             {
                 rewriter.setInsertionPointAfter(globalOp);
             }
         };
 
         block->walk(lastUse);
+    }    
+
+    void seekLast(mlir::Block *block)
+    {
+        seekLastOp<mlir_ts::GlobalOp>(block);
     }
 
     bool setRTTIForType(mlir::Location loc, mlir::Type type, std::function<ClassInfo::TypePtr(StringRef fullClassName)> resolveClassInfo)
@@ -297,10 +305,7 @@ class MLIRRTTIHelperVCWin32
             return mlir::failure();
         }
 
-        SmallVector<mlir::NamedAttribute> attrs;
-        attrs.push_back({ATTR("Linkage"), ATTR("External")});
-
-        rewriter.create<mlir_ts::GlobalOp>(loc, mth.getOpaqueType(), true, /*LLVM::Linkage::External,*/ name, mlir::Attribute{}, attrs);
+        rewriter.create<mlir_ts::GlobalOp>(loc, mth.getOpaqueType(), true, name, LLVM::Linkage::External);
         return mlir::success();
     }
 
@@ -325,7 +330,7 @@ class MLIRRTTIHelperVCWin32
     mlir::LogicalResult setStructValue(mlir::Location loc, mlir::Value &tupleValue, mlir::Value value, int index)
     {
         auto tpl = tupleValue.getType();
-        assert(tpl.isa<mlir_ts::TupleType>() || tpl.isa<mlir_ts::ConstTupleType>() || tpl.isa<mlir_ts::ConstArrayValueType>());
+        assert(isa<mlir_ts::TupleType>(tpl) || isa<mlir_ts::ConstTupleType>(tpl) || isa<mlir_ts::ConstArrayValueType>(tpl));
         tupleValue = rewriter.create<mlir_ts::InsertPropertyOp>(loc, tpl, value, tupleValue, MLIRHelper::getStructIndex(rewriter, index));
         return mlir::success();
     }
@@ -338,15 +343,11 @@ class MLIRRTTIHelperVCWin32
             return mlir::failure();
         }
 
-        MLIRCodeLogic mcl(rewriter);
+        MLIRCodeLogic mcl(rewriter, compileOptions);
 
         auto rttiTypeDescriptor2Ty = getRttiTypeDescriptor2Ty(StringRef(typeName).size());
 
-        SmallVector<mlir::NamedAttribute> attrs;
-        attrs.push_back({ATTR("Linkage"), ATTR("LinkonceODR")});
-
-        auto _r0n_Value = rewriter.create<mlir_ts::GlobalOp>(loc, rttiTypeDescriptor2Ty, false, /*LLVM::Linkage::LinkonceODR,*/ name,
-                                                             mlir::Attribute{}, attrs);
+        auto _r0n_Value = rewriter.create<mlir_ts::GlobalOp>(loc, rttiTypeDescriptor2Ty, false, name, LLVM::Linkage::LinkonceODR);
 
         {
             setGlobalOpWritingPoint(_r0n_Value);
@@ -382,10 +383,7 @@ class MLIRRTTIHelperVCWin32
             return mlir::failure();
         }
 
-        SmallVector<mlir::NamedAttribute> attrs;
-        attrs.push_back({ATTR("Linkage"), ATTR("External")});
-
-        rewriter.create<mlir_ts::GlobalOp>(loc, mth.getI8Type(), true, /*LLVM::Linkage::External,*/ name, mlir::Attribute{}, attrs);
+        rewriter.create<mlir_ts::GlobalOp>(loc, mth.getI8Type(), true, name, LLVM::Linkage::External);
         return mlir::success();
     }
 
@@ -410,11 +408,7 @@ class MLIRRTTIHelperVCWin32
         // _CT??_R0N@88
         auto ehCatchableTypeTy = getCatchableTypeTy();
 
-        SmallVector<mlir::NamedAttribute> attrs;
-        attrs.push_back({ATTR("Linkage"), ATTR("LinkonceODR")});
-
-        auto _ct_r0n_Value = rewriter.create<mlir_ts::GlobalOp>(loc, ehCatchableTypeTy, true, /*LLVM::Linkage::LinkonceODR,*/ name,
-                                                                mlir::Attribute{}, attrs);
+        auto _ct_r0n_Value = rewriter.create<mlir_ts::GlobalOp>(loc, ehCatchableTypeTy, true, name, LLVM::Linkage::LinkonceODR);
 
         {
             setGlobalOpWritingPoint(_ct_r0n_Value);
@@ -504,11 +498,7 @@ class MLIRRTTIHelperVCWin32
         // _CT??_R0N@88
         auto ehCatchableArrayTypeTy = getCatchableArrayTypeTy(arraySize);
 
-        SmallVector<mlir::NamedAttribute> attrs;
-        attrs.push_back({ATTR("Linkage"), ATTR("LinkonceODR")});
-
-        auto _cta1nValue = rewriter.create<mlir_ts::GlobalOp>(loc, ehCatchableArrayTypeTy, true, /*LLVM::Linkage::LinkonceODR,*/ name,
-                                                              mlir::Attribute{}, attrs);
+        auto _cta1nValue = rewriter.create<mlir_ts::GlobalOp>(loc, ehCatchableArrayTypeTy, true, name, LLVM::Linkage::LinkonceODR);
 
         {
             setGlobalOpWritingPoint(_cta1nValue);
@@ -577,11 +567,8 @@ class MLIRRTTIHelperVCWin32
 
         auto throwInfoTy = getThrowInfoTy();
 
-        SmallVector<mlir::NamedAttribute> attrs;
-        attrs.push_back({ATTR("Linkage"), ATTR("LinkonceODR")});
-
         auto _TI1NValue =
-            rewriter.create<mlir_ts::GlobalOp>(loc, throwInfoTy, true, /*LLVM::Linkage::LinkonceODR,*/ name, mlir::Attribute{}, attrs);
+            rewriter.create<mlir_ts::GlobalOp>(loc, throwInfoTy, true, name, LLVM::Linkage::LinkonceODR);
 
         // Throw Info
         setGlobalOpWritingPoint(_TI1NValue);

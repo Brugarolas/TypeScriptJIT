@@ -24,6 +24,7 @@ class Printer
     OUT &out;
     int ident;
     bool declarationMode;
+    std::function<string(ts::Node)> onMissingReturnType;
 
     // temp var
     bool isLastStatementBlock;
@@ -38,6 +39,11 @@ public:
         declarationMode = declarationMode_;
     }
 
+    void setOnMissingReturnType(std::function<string(ts::Node)> onMissingReturnType_)
+    {
+        onMissingReturnType = onMissingReturnType_;
+    }
+
     void printNode(ts::Node node)
     {
         forEachChildPrint(node);
@@ -50,7 +56,6 @@ public:
         forEachChildrenPrint(nodes, open, separator, end, ifAny);
     }
 
-protected:
     void write_escaped(string const& s) {
         out << S('"');
         for (auto i = s.begin(), end = s.end(); i != end; ++i) {
@@ -175,7 +180,7 @@ protected:
 
     void newLine()
     {
-        out << std::endl;
+        out << "\n";
     }
 
     void newLineWithIntent()
@@ -202,6 +207,7 @@ protected:
         ident--;
     }
 
+protected:
     inline bool isBlock(ts::Node node)
     {
         return node == SyntaxKind::Block || node == SyntaxKind::ModuleBlock;
@@ -308,7 +314,8 @@ protected:
         {
             if (declarationMode)
             {
-                return false;
+                //return false;
+                return true;
             }
 
             auto functionLikeDeclarationBase = node.as<FunctionLikeDeclarationBase>();
@@ -733,8 +740,19 @@ protected:
                 out << " : ";
                 forEachChildPrint(variableDeclaration->type);
             }
+            else if (declarationMode)
+            {
+                if (onMissingReturnType)
+                {
+                    auto data = onMissingReturnType(node);
+                    if (!data.empty())
+                    {
+                        out << " : " << data;
+                    }
+                }                
+            }
 
-            if (variableDeclaration->initializer) {
+            if (!declarationMode && variableDeclaration->initializer) {
                 out << " = ";
                 forEachChildPrint(variableDeclaration->initializer);
             }
@@ -798,7 +816,7 @@ protected:
         case SyntaxKind::IndexSignature:
         {
             auto signatureDeclarationBase = node.as<SignatureDeclarationBase>();
-            printModifiers(node);
+            printModifiersWithMode(node);
             forEachChildrenPrint(signatureDeclarationBase->typeParameters, "<", ", ", ">", true);
             forEachChildrenPrint(signatureDeclarationBase->parameters, "[", ", ", "]");
             if (signatureDeclarationBase->type)
@@ -856,13 +874,36 @@ protected:
             forEachChildrenPrint(functionLikeDeclarationBase->typeParameters, "<", ", ", ">", true);
             forEachChildrenPrint(functionLikeDeclarationBase->parameters, "(", ", ", ")");
             if (functionLikeDeclarationBase->type)
+            {
                 out << " : ";
-            forEachChildPrint(functionLikeDeclarationBase->type);
+                forEachChildPrint(functionLikeDeclarationBase->type);
+            } 
+            else if (declarationMode)
+            { 
+                if (onMissingReturnType)
+                {
+                    auto data = onMissingReturnType(node);
+                    if (!data.empty())
+                    {
+                        out << " : " << data;
+                    }
+                }
+                else
+                {
+                    out << " : void";
+                }
+            }
+
             if (kind == SyntaxKind::ArrowFunction)
                 forEachChildPrint(node.as<ArrowFunction>()->equalsGreaterThanToken);
             if (!declarationMode)
             {
                 forEachChildPrint(functionLikeDeclarationBase->body);
+            }
+            else
+            {
+                out << ";";
+                newLine();
             }
 
             break;
@@ -1245,7 +1286,7 @@ protected:
         }
         case SyntaxKind::VariableStatement:
         {
-            printModifiers(node);
+            printModifiersWithMode(node);
             forEachChildPrint(node.as<VariableStatement>()->declarationList);
             break;
         }
@@ -1563,7 +1604,7 @@ protected:
         case SyntaxKind::ModuleDeclaration:
         {
             auto moduleDeclaration = node.as<ModuleDeclaration>();
-            printModifiers(node);
+            printModifiersWithMode(node);
             out << "module ";
             forEachChildPrint(moduleDeclaration->name);
 
@@ -1583,7 +1624,7 @@ protected:
         case SyntaxKind::ImportEqualsDeclaration:
         {
             auto importEqualsDeclaration = node.as<ImportEqualsDeclaration>();
-            printModifiers(node);
+            printModifiersWithMode(node);
             out << "import ";
             forEachChildPrint(importEqualsDeclaration->name);
             out << " = ";
@@ -1644,7 +1685,7 @@ protected:
         case SyntaxKind::ExportDeclaration:
         {
             auto exportDeclaration = node.as<ExportDeclaration>();
-            printModifiers(node);
+            printModifiersWithMode(node);
             out << "export ";
             if (exportDeclaration->exportClause)
             {
@@ -1690,7 +1731,7 @@ protected:
         }
         case SyntaxKind::ExportAssignment:
         {
-            printModifiers(node);
+            printModifiersWithMode(node);
             out << "export = ";
             forEachChildPrint(node.as<ExportAssignment>()->expression);
             break;
@@ -1786,7 +1827,7 @@ protected:
         }
         case SyntaxKind::MissingDeclaration:
         {
-            printModifiers(node);
+            printModifiersWithMode(node);
             break;
         }
         case SyntaxKind::CommaListExpression:

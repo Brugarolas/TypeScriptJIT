@@ -1,9 +1,10 @@
 #include "TypeScript/Defines.h"
-#include "TypeScript/ExportFixPass.h"
+#include "TypeScript/Pass/ExportFixPass.h"
 
 #include "llvm/IR/PatternMatch.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Module.h"
 
 using namespace llvm;
 using namespace PatternMatch;
@@ -89,14 +90,14 @@ struct ExportFixPassCode
             // set DLLExport
             if (G.getSection() == "export" || G.getSection() == DLL_EXPORT)
             {
-                if (isWindowsMSVCEnvironment)
+                if (isWindowsMSVCEnvironment && !G.hasDLLExportStorageClass())
                     G.setDLLStorageClass(llvm::GlobalVariable::DLLExportStorageClass);
                 G.setSection("");
                 MadeChange = true;
             }
             else if (G.getSection() == "import" || G.getSection() == DLL_IMPORT)
             {
-                if (isWindowsMSVCEnvironment)
+                if (isWindowsMSVCEnvironment && !G.hasDLLImportStorageClass())
                     G.setDLLStorageClass(llvm::GlobalVariable::DLLImportStorageClass);
                 G.setSection("");
                 MadeChange = true;

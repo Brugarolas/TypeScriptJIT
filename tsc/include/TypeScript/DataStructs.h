@@ -19,7 +19,13 @@ struct CompileOptions
     int sizeBits;
     bool isWasm;
     bool isWindows;
+    bool isExecutable;
+    bool isDLL;
     enum Exports exportOpt;
+    bool embedExportDeclarations;
+    std::string outputFolder;
+    bool appendGCtorsToMethod;
+    bool strictNullChecks;
 };
 
 #endif // TYPESCRIPT_DATASTRUCT_H_

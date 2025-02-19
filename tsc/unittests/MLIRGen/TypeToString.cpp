@@ -1,5 +1,4 @@
 #include "enums.h"
-#include "dump.h"
 
 #include "TypeScript/MLIRGen.h"
 #include "TypeScript/Defines.h"
@@ -7,7 +6,7 @@
 #include "TypeScript/TypeScriptDialect.h"
 #include "TypeScript/TypeScriptOps.h"
 
-#include "TypeScript/MLIRLogic/MLIRTypeHelper.h"
+#include "TypeScript/MLIRLogic/MLIRPrinter.h"
 
 #include "mlir/IR/MLIRContext.h"
 
@@ -25,15 +24,17 @@ public:
         context.getOrLoadDialect<mlir::typescript::TypeScriptDialect>();
     }
 
-    std::string getTypeString(mlir::Type type)
+    SmallString<128> getTypeString(mlir::Type type)
     {
-        std::stringstream exports;
-        MLIRTypeHelper mth(&context);
-        mth.printType<std::ostream>(exports, type);
-        return exports.str();
+        SmallString<128> exportType;
+        raw_svector_ostream rso(exportType);        
+
+        MLIRPrinter mp{};
+        mp.printType<raw_svector_ostream>(rso, type);
+        return exportType.str();  
     }
 
-    void test(mlir::Type type, std::string expect)
+    void test(mlir::Type type, StringRef expect)
     {
         EXPECT_THAT( getTypeString(type), expect );
     }
@@ -140,17 +141,17 @@ TEST_F(TypeToNameTest, array_name) {
 TEST_F(TypeToNameTest, tuple_name) {
 
     SmallVector<::mlir::typescript::FieldInfo> fields;
-    fields.push_back({ mlir::Attribute(), get<mlir_ts::NumberType>(), false });
-    fields.push_back({ mlir::Attribute(), get<mlir_ts::StringType>(), false });
+    fields.push_back({ mlir::Attribute(), get<mlir_ts::NumberType>(), false, mlir_ts::AccessLevel::Public });
+    fields.push_back({ mlir::Attribute(), get<mlir_ts::StringType>(), false, mlir_ts::AccessLevel::Public });
     test(getTuple(fields), "[number, string]");
 }
 
 TEST_F(TypeToNameTest, tuple_with_names) {
 
     SmallVector<::mlir::typescript::FieldInfo> fields;
-    fields.push_back({ mlir::IntegerAttr::get(mlir::IntegerType::get(getContext(), 32), 1), get<mlir_ts::NumberType>(), false });
-    fields.push_back({ mlir::StringAttr::get(getContext(), "size"), get<mlir_ts::NumberType>(), false });
-    fields.push_back({ mlir::StringAttr::get(getContext(), "name"), get<mlir_ts::StringType>(), false });
+    fields.push_back({ mlir::IntegerAttr::get(mlir::IntegerType::get(getContext(), 32), 1), get<mlir_ts::NumberType>(), false, mlir_ts::AccessLevel::Public });
+    fields.push_back({ mlir::StringAttr::get(getContext(), "size"), get<mlir_ts::NumberType>(), false, mlir_ts::AccessLevel::Public });
+    fields.push_back({ mlir::StringAttr::get(getContext(), "name"), get<mlir_ts::StringType>(), false, mlir_ts::AccessLevel::Public });
     test(getTuple(fields), "[1:number, size:number, name:string]");
 }
 

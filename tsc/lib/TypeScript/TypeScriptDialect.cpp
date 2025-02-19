@@ -87,7 +87,7 @@ Type mlir_ts::ConstTupleType::parse(AsmParser &parser)
             return Type();
         if (parser.parseRBrace())
             return Type();
-        parameters.push_back(FieldInfo{id, type, false});
+        parameters.push_back(FieldInfo{id, type, false, mlir_ts::AccessLevel::Public});
         if (parser.parseOptionalComma())
             break;
     }
@@ -134,7 +134,7 @@ Type mlir_ts::TupleType::parse(AsmParser &parser)
             return Type();
         if (parser.parseRBrace())
             return Type();
-        parameters.push_back(FieldInfo{id, type});
+        parameters.push_back(FieldInfo{id, type, false, mlir_ts::AccessLevel::Public});
         if (parser.parseOptionalComma())
             break;
     }
@@ -238,7 +238,7 @@ struct TypeScriptInlinerInterface : public mlir::DialectInlinerInterface
     // Transformation Hooks
     //===--------------------------------------------------------------------===//
 
-    void handleTerminator(mlir::Operation *op, mlir::ArrayRef<Value> valuesToRepl) const final
+    virtual void handleTerminator(mlir::Operation *op, ValueRange valuesToRepl) const final
     {
         LLVM_DEBUG(llvm::dbgs() << "!! handleTerminator: " << *op << "\n";);
 

@@ -40,7 +40,7 @@
             "name": "(Linux) ./tsc - MLIR",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/../../__build/tsc/linux-ninja/bin/tsc",
+            "program": "${workspaceFolder}/../../__build/tsc/linux-ninja-gcc-debug/bin/tsc",
             "args": [
                 "-emit=mlir",
                 "-debug-only=mlir",
@@ -180,12 +180,13 @@
             "name": "(Windows) tsc.exe - OBJ",
             "type": "cppvsdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/../../__build/tsc/windows-msbuild-debug/bin/tsc.exe",
+            "program": "${workspaceFolder}/../../__build/tsc/windows-msbuild-release/bin/tsc.exe",
             "args": [
                 "-emit=obj",
-                "-opt",
+                "--opt",
+                "--opt_level=3",
                 "-o=c:/temp/1.obj",
-                "C:/temp/1.ts"
+                "I:/TypeScriptCompiler/tsc/test/tester/tests/00object_new.ts"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
@@ -237,7 +238,7 @@
             "visualizerFile": "${workspaceFolder}/../tsc.natvis"
         },      
         {
-            "name": "(Windows) tsc.exe - EXE - NO DEFAULT",
+            "name": "(Windows) tsc.exe - EXE(DI) - NO DEFAULT",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/../../__build/tsc/windows-msbuild-debug/bin/tsc.exe",
@@ -245,7 +246,7 @@
                 "-emit=exe",
                 "--di",
                 "--verbose",
-                "-debug-only=mlir,mlir-affine,llvm,pass",
+                "-debug-only=mlir,mlir-affine,llvm,pass,coro-split",
                 "-mlir-disable-threading",
                 "-mtriple=x86_64-pc-windows-msvc",
                 "--no-default-lib",
@@ -253,7 +254,7 @@
                 "I:/Playground/1.ts",
             ],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}",
+            "cwd": "I:/Playground",
             "environment": [
                 { "name": "GC_LIB_PATH", "value": "${workspaceFolder}/../../__build/gc/msbuild/x64/debug/Debug" },
                 { "name": "LLVM_LIB_PATH", "value": "${workspaceFolder}/../../__build/llvm/msbuild/x64/debug/Debug/lib" },
@@ -262,6 +263,57 @@
             "console": "externalTerminal",
             "visualizerFile": "${workspaceFolder}/../tsc.natvis"
         },      
+        {
+            "name": "(Windows) tsc.exe - EXE(OPT) - NO DEFAULT",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/../../__build/tsc/windows-msbuild-debug/bin/tsc.exe",
+            "args": [
+                "-emit=exe",
+                "--opt",
+                "--opt_level=3",
+                "--verbose",
+                "-debug-only=mlir,mlir-affine,llvm,pass",
+                "-mlir-disable-threading",
+                "-mtriple=x86_64-pc-windows-msvc",
+                "--no-default-lib",
+                "I:/Playground/1.ts",
+            ],
+            "stopAtEntry": false,
+            "cwd": "I:/Playground",
+            "environment": [
+                { "name": "GC_LIB_PATH", "value": "${workspaceFolder}/../../__build/gc/msbuild/x64/release/Release" },
+                { "name": "LLVM_LIB_PATH", "value": "${workspaceFolder}/../../__build/llvm/msbuild/x64/release/Release/lib" },
+                { "name": "TSC_LIB_PATH", "value": "${workspaceFolder}/../../__build/tsc/windows-msbuild-release/lib" },
+            ],
+            "console": "externalTerminal",
+            "visualizerFile": "${workspaceFolder}/../tsc.natvis"
+        },       
+        {
+            "name": "(Windows) tsc.exe - EXE(OPT) (Release EXE) - NO DEFAULT",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/../../__build/tsc/windows-msbuild-release/bin/tsc.exe",
+            "args": [
+                "-emit=exe",
+                "--opt",
+                "--opt_level=3",
+                "--verbose",
+                "-mlir-disable-threading",
+                "-mtriple=x86_64-pc-windows-msvc",
+                "--no-default-lib",
+                "I:/Playground/1.ts",
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [
+                { "name": "GC_LIB_PATH", "value": "${workspaceFolder}/../../__build/gc/msbuild/x64/release/Release" },
+                { "name": "LLVM_LIB_PATH", "value": "${workspaceFolder}/../../__build/llvm/msbuild/x64/release/Release/lib" },
+                { "name": "TSC_LIB_PATH", "value": "${workspaceFolder}/../../__build/tsc/windows-msbuild-release/lib" },
+            ],
+            "console": "externalTerminal",
+            "visualizerFile": "${workspaceFolder}/../tsc.natvis"
+        },          
         {
             "name": "(Windows) tsc.exe - LLVM - NO DEFAULT",
             "type": "cppvsdbg",
@@ -293,14 +345,21 @@
             "request": "launch",
             "program": "${workspaceFolder}/../../__build/tsc/windows-msbuild-debug/bin/tsc.exe",
             "args": [
-                "-emit=exe",
+                "-emit=dll",
                 "-opt",
-                "-o=c:/temp/1.dll",
-                "C:/temp/1.ts"
+                "-debug-only=tsc,llvm,pass",
+                "-mlir-disable-threading",                
+                "--gctors-as-method",
+                "-o=I:/Playground/export_vars.dll",
+                "I:/Playground/export_vars.ts"
             ],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}",
-            "environment": [],
+            "cwd": "I:/Playground",
+            "environment": [
+                { "name": "GC_LIB_PATH", "value": "${workspaceFolder}/../../__build/gc/msbuild/x64/debug/Debug" },
+                { "name": "LLVM_LIB_PATH", "value": "${workspaceFolder}/../../__build/llvm/msbuild/x64/debug/Debug/lib" },
+                { "name": "TSC_LIB_PATH", "value": "${workspaceFolder}/../../__build/tsc/windows-msbuild-debug/lib" },                
+            ],
             "console": "externalTerminal",
             "visualizerFile": "${workspaceFolder}/../tsc.natvis"
         },      
@@ -355,15 +414,16 @@
                 "-debug-only=mlir,llvm",
                 "-mlir-disable-threading",
                 "-di",
-                "--default-lib-path=C:/temp",
-                "--shared-libs=${workspaceFolder}/../../__build/tsc/windows-msbuild-debug/bin/TypeScriptRuntime.dll"
+                "--default-lib-path=I:/TypeScriptCompilerDefaultLib/__build/debug",
+                "--shared-libs=${workspaceFolder}/../../__build/tsc/windows-msbuild-debug/bin/TypeScriptRuntime.dll",
+                "--shared-libs=I:/Playground/export_enum.dll"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],
             "console": "externalTerminal",
             "visualizerFile": "${workspaceFolder}/../tsc.natvis"
-        },
+        },     
         {
             "name": "(Windows) tsc.exe - JIT (no default)",
             "type": "cppvsdbg",
@@ -372,14 +432,14 @@
             "args": [
                 "-emit=jit",
                 "I:/Playground/1.ts",
-                "-debug-only=mlir,llvm",
+                "-debug-only=mlir,llvm,pass",
                 "-mlir-disable-threading",
                 "-di",
                 "--no-default-lib",
                 "--shared-libs=${workspaceFolder}/../../__build/tsc/windows-msbuild-debug/bin/TypeScriptRuntime.dll"
             ],
             "stopAtEntry": false,
-            "cwd": "${workspaceFolder}",
+            "cwd": "I:/Playground",
             "environment": [],
             "console": "externalTerminal",
             "visualizerFile": "${workspaceFolder}/../tsc.natvis"
@@ -429,6 +489,8 @@
             "args": [
                 "-emit=exe",
                 "-relocation-model=pic",
+                "--no-default-lib",
+                "-debug-only=mlir",
                 "~/dev/playground/1.ts"
             ],
             "stopAtEntry": false,
@@ -513,6 +575,7 @@
                 "-emit=dll",
                 "-debug-only=mlir,llvm",
                 "-mlir-disable-threading",                
+                "--no-default-lib",
                 "-o=c:/temp/lib.dll",
                 "${workspaceFolder}/../../../TypeScriptCompilerDefaultLib/src/lib.ts"
             ],
@@ -521,9 +584,28 @@
             "environment": [],
             "console": "externalTerminal",
             "visualizerFile": "${workspaceFolder}/../tsc.natvis"
-        },             
+        },        
         {
-            "name": "(Windows) tsc.exe - DefaultLib Compile (OBJ)",
+            "name": "(Windows) tsc.exe - DefaultLib Compile (MLIR)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/../../__build/tsc/windows-msbuild-debug/bin/tsc.exe",
+            "args": [
+                "-emit=mlir",
+                "-debug-only=mlir,llvm",
+                "-mlir-disable-threading",                
+                "--no-default-lib",
+                "-o=c:/temp/lib.mlir",
+                "${workspaceFolder}/../../../TypeScriptCompilerDefaultLib/src/lib.ts"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "console": "externalTerminal",
+            "visualizerFile": "${workspaceFolder}/../tsc.natvis"
+        },               
+        {
+            "name": "(Windows) tsc.exe - DefaultLib Compile (DI) (OBJ)",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/../../__build/tsc/windows-msbuild-debug/bin/tsc.exe",
@@ -531,6 +613,7 @@
                 "-emit=obj",
                 "-debug-only=mlir,llvm",
                 "-mlir-disable-threading",
+                "--no-default-lib",
                 "--di",                
                 "-o=c:/temp/lib.obj",
                 "${workspaceFolder}/../../../TypeScriptCompilerDefaultLib/src/lib.ts"
@@ -542,7 +625,7 @@
             "visualizerFile": "${workspaceFolder}/../tsc.natvis"
         },     
         {
-            "name": "(Windows) tsc.exe - DefaultLib Compile 2 (OBJ)",
+            "name": "(Windows) tsc.exe - DefaultLib Compile (opt) (OBJ)",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/../../__build/tsc/windows-msbuild-debug/bin/tsc.exe",
@@ -571,6 +654,8 @@
             "program": "${workspaceFolder}/../../__build/tsc/linux-ninja-gcc-debug/bin/tsc",
             "args": [
                 "-emit=obj",
+                "--export=none", 
+                "--no-default-lib",
                 "-debug-only=mlir,llvm",
                 "-mlir-disable-threading",                
                 "-o=~/dev/playground/lib.obj",
@@ -583,7 +668,7 @@
             "visualizerFile": "${workspaceFolder}/../tsc.natvis"
         },          
         {
-            "name": "(Windows-cppvsdbg) TypeScriptApp.exe",
+            "name": "(Windows-cppvsdbg) (cmake_winapp) TypeScriptApp.exe",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/../../docs/how/cmake_winapp/__build/debug/Debug/TypeScriptApp.exe",
@@ -595,6 +680,48 @@
                 "moduleLoad": true,
                 "trace": true
             },            
-        }        
+        },
+        {
+            "name": "(Windows) tsc.exe - new VSCode project",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/../../__build/tsc/windows-msbuild-debug/bin/tsc.exe",
+            "args": [
+                "--new",
+                "Test1"
+            ],
+            "stopAtEntry": false,
+            "cwd": "I:/Playground",
+            "environment": [],
+            "console": "externalTerminal",
+            "visualizerFile": "${workspaceFolder}/../tsc.natvis"
+        },
+        {
+            "name": "(Windows) tsc.exe - Install Default lib",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/../../__build/tsc/windows-msbuild-debug/bin/tsc.exe",
+            "args": [
+                "--install-default-lib"
+            ],
+            "stopAtEntry": false,
+            "cwd": "I:/Playground",
+            "environment": [],
+            "console": "externalTerminal",
+            "visualizerFile": "${workspaceFolder}/../tsc.natvis"
+        },
+        {
+            "name": "(Linux) tsc - Install Default lib",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/../../__build/tsc/linux-ninja-gcc-debug/bin/tsc",
+            "args": [
+                "--install-default-lib"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "visualizerFile": "${workspaceFolder}/../tsc.natvis"
+        }          
     ]
 }

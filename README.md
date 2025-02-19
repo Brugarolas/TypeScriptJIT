@@ -8,89 +8,80 @@
 [![Test Build (Windows)](https://github.com/ASDAlexander77/TypeScriptCompiler/actions/workflows/cmake-test-release-win.yml/badge.svg)](https://github.com/ASDAlexander77/TypeScriptCompiler/actions/workflows/cmake-test-release-win.yml)
 [![Test Build (Linux)](https://github.com/ASDAlexander77/TypeScriptCompiler/actions/workflows/cmake-test-release-linux.yml/badge.svg)](https://github.com/ASDAlexander77/TypeScriptCompiler/actions/workflows/cmake-test-release-linux.yml)
 
-# What's new 
+# What's new
+- Visual Studio Code project
+```cmd
+tsc --new Test1
+```
+
+- Strict null checks
+```TypeScript
+let sn: string | null = null; // Ok
+let s: string = null; // error
+```
+
+- improved `Template Literal Types`
+```TypeScript
+type Color = "red" | "green" | "blue";
+type HexColor<T extends Color> = `#${string}`;
+```
+
+- Public, private, and protected modifiers
+```TypeScript
+class Point {
+    private x: number;
+    #y: number;
+}
+
+const p = new Point();
+p.x // access error
+p.#y // error
+```
+
+- Class from Tuple
+```TypeScript
+class Point {
+    x: number;
+    y: number;
+}
+
+class Line {
+    constructor(public start: Point, public end: Point) { }
+}
+
+const l = new Line({ x: 0, y: 1 }, { x: 1.0, y: 2.0 });
+```
+
+- Compile-time `if`s
+```TypeScript
+function isArray<T extends unknown[]>(value: T): value is T {
+    return true;
+}
+
+function gen<T>(t: T)
+{
+    if (isArray(t))
+    {
+        return t.length.toString();
+    }
+
+    return "int";
+}
+
+const v1 = gen<i32>(23); // result: int
+const v2 = gen<string[]>([]); // result: 0
+```
+
+- Migrated to LLVM 19.1.3
+
 - improved ```generating debug information``` more info here: [Wiki:How-To](https://github.com/ASDAlexander77/TypeScriptCompiler/wiki/How-To#compile-and-debug-with-visual-studio-code)
 ```cmd
 tsc --di --opt_level=0 --emit=exe example.ts
 ```
-
-- cast from Union Types
-```TypeScript
-let a: string | number = 5;
-let b: string = a; // b is "5"
-```
-
-- All functions without types are generics
-```TypeScript
-static class Array {
-    public of(...arg) {
-        return arg;
-    }
-
-    public from(arrayLike) {
-        return [...arrayLike];
-    }       
-}
-```
-
-- Native types aliases
-```TypeScript
-// byte, short, ushort, int, uint, long, ulong, char, i8, i16, i32, i64,
-// u8, u16, u32, u64, s8, s16, s32, s64, f16, f32, f64, f128, half, float, double, index
-
-const s1: s8 = -1;
-const s2: u16 = 2;
-const s3: i32 = 3;
-const s4: f64 = 1.0;
-```
-- Reference types (aka pointers)
-```TypeScript
-let a = [1, 2, 3];
-const view: Reference<TypeOf<1>> = ReferenceOf(a[1]);
-const data = LoadReference(view);
-const data1 = LoadReference(view[1]);
-```
-- Accessor
-```TypeScript
-class Person {
-    static accessor sname: string;
-    accessor name = "no value";
-    constructor(name: string) {
-        this.name = name;
-    }
-}
-```
-
-- Explicit Resource Management 
-```TypeScript
-function main()
-{
-    using file = new TempFile(".some_temp_file");
-    print("done.");
-}
-
-class TempFile {
-    #path: string;
-    #handle: number;
-    constructor(path: string) {
-        this.#path = path;
-        this.#handle = 1;
-    }
-    // other methods
-    [Symbol.dispose]() {
-        // Close the file and delete it.
-        this.#handle = 0;
-        print("dispose");
-    }
-}
-```
-
-- Migrated to LLVM 17.0.2
-
 - [more...](https://github.com/ASDAlexander77/TypeScriptCompiler/wiki/What's-new)
 
 # Planning
-- [x] Migrating to LLVM 17.0.2
+- [x] Migrating to LLVM 19.1.3
 - [x] Shared libraries
 - [ ] JavaScript Built-in classes library
 

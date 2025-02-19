@@ -2,8 +2,14 @@
 #define DEFINES_H_
 
 #define IDENTIFIER_ATTR_NAME "identifier"
-#define VIRTUALFUNC_ATTR_NAME "__virt"
+#define BUILTIN_FUNC_ATTR_NAME "__builtin"
 #define GENERIC_ATTR_NAME "__generic"
+#define ATOMIC_ATTR_NAME "__atomic"
+#define ORDERING_ATTR_NAME "__ordering"
+#define SYNCSCOPE_ATTR_NAME "__syncscope"
+#define VOLATILE_ATTR_NAME "__volatile"
+#define NONTEMPORAL_ATTR_NAME "__nontemporal"
+#define INVARIANT_ATTR_NAME "__invariant"
 #define INSTANCES_COUNT_ATTR_NAME "InstancesCount"
 #define RETURN_VARIABLE_NAME ".return"
 #define CAPTURED_NAME ".captured"
@@ -35,11 +41,15 @@
 #define NEW_CTOR_METHOD_NAME ".new_ctor"
 #define LENGTH_FIELD_NAME "length"
 #define INDEX_ACCESS_FIELD_NAME ".index"
+#define INDEX_ACCESS_GET_FIELD_NAME "get"
+#define INDEX_ACCESS_SET_FIELD_NAME "set"
 #define CALL_FIELD_NAME ".call"
 #define THIS_ALIAS ".this"
 #define GENERATOR_STEP ".step"
 #define GENERATOR_SWITCHSTATE ".switchstate"
 #define GENERATOR_STATELABELPREFIX ".state"
+
+#define MLIR_GCTORS "__mlir_gctors"
 
 #define TO_STRING "toString"
 #define SYMBOL_TO_STRING_TAG "toStringTag"
@@ -50,7 +60,10 @@
 #define SYMBOL_TO_PRIMITIVE "toPrimitive"
 #define SYMBOL_DISPOSE "dispose"
 
-#define SHARED_LIB_DECLARATIONS "__decls"
+// we are using 3 underscore as this is feature of ts parser to add _ to __variables
+#define SHARED_LIB_DECLARATIONS_FILENAME "__decls.ts"
+#define SHARED_LIB_DECLARATIONS_2UNDERSCORE "__decls"
+#define SHARED_LIB_DECLARATIONS "___decls"
 #define DLL_EXPORT "dllexport"
 #define DLL_IMPORT "dllimport"
 
@@ -76,6 +89,10 @@
 #define UNION_TAG_INDEX 0
 #define UNION_VALUE_INDEX 1
 
+#define ANY_SIZE 0
+#define ANY_TYPE 1
+#define ANY_DATA 2
+
 #define DEFAULT_LIB_DIR "defaultlib"
 #define DEFAULT_LIB_NAME "TypeScriptDefaultLib"
 
@@ -85,5 +102,8 @@
 #define SUBPROGRAM_DEBUG_SCOPE "function"
 #define BLOCK_DEBUG_SCOPE "block"
 #define NAMESPACE_DEBUG_SCOPE "block"
+
+#define FIRST_GLOBAL_CONSTRUCTOR_PRIORITY 100
+#define LAST_GLOBAL_CONSTRUCTOR_PRIORITY 1000
 
 #endif // DEFINES_H_

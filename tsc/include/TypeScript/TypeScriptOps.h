@@ -9,7 +9,7 @@
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpDefinition.h"
-#include "mlir/IR/FunctionInterfaces.h"
+#include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Interfaces/CallInterfaces.h"
 #include "mlir/Interfaces/CastInterfaces.h"
 #include "mlir/Interfaces/ControlFlowInterfaces.h"
@@ -17,6 +17,7 @@
 #include "mlir/Interfaces/CopyOpInterface.h"
 #include "mlir/Interfaces/LoopLikeInterface.h"
 #include "mlir/IR/Matchers.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 
 namespace mlir
 {
@@ -25,21 +26,31 @@ namespace typescript
 
 /// FieldInfo represents a field in the TupleType(StructType) data type. It is used as a
 /// parameter in TestTypeDefs.td.
+
+enum AccessLevel
+{
+    Public, // default
+    Protected,
+    Private
+};
+
 struct FieldInfo
 {
     Attribute id;
     Type type;
     bool isConditional;
+    AccessLevel accessLevel;
 
     FieldInfo() = default;
-    FieldInfo(Attribute id, Type type) : id{id}, type{type}, isConditional{false} {};
-    FieldInfo(Attribute id, Type type, bool isConditional) : id{id}, type{type}, isConditional{isConditional} {};
+    //FieldInfo(Attribute id, Type type) : id{id}, type{type}, isConditional{false}, accessLevel{AccessLevel::Public} {};
+    //FieldInfo(Attribute id, Type type, bool isConditional) : id{id}, type{type}, isConditional{isConditional}, accessLevel{AccessLevel::Public} {};
+    FieldInfo(Attribute id, Type type, bool isConditional, AccessLevel accessLevel) : id{id}, type{type}, isConditional{isConditional}, accessLevel{accessLevel} {};
 
     // Custom allocation called from generated constructor code
     FieldInfo allocateInto(TypeStorageAllocator &alloc) const
     {
         // return FieldInfo{alloc.copyInto(name), type};
-        return FieldInfo{id, type, false};
+        return FieldInfo{id, type, isConditional, accessLevel};
     }
 };
 

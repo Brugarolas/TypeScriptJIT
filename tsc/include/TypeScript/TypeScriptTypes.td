@@ -177,15 +177,15 @@ def TypeScript_Enum : TypeScript_Type<"Enum"> {
     enum<i32>
     ```
   }];
-  let parameters = (ins "Type":$elementType, "DictionaryAttr":$values);
+  let parameters = (ins "FlatSymbolRefAttr":$name, "Type":$elementType, "DictionaryAttr":$values);
 
   let assemblyFormat = "`<` params `>`";
 
   let builders = [
-    TypeBuilderWithInferredContext<(ins "Type":$elementType, "DictionaryAttr":$values), [{
-      return Base::get(elementType.getContext(), elementType, values);
+    TypeBuilderWithInferredContext<(ins "FlatSymbolRefAttr":$name, "Type":$elementType, "DictionaryAttr":$values), [{
+      return Base::get(elementType.getContext(), name, elementType, values);
     }]>
-  ];
+  ]; 
 }
 
 def TypeScript_LiteralType : TypeScript_Type<"Literal"> {
@@ -360,7 +360,11 @@ def TypeScript_ConstTuple : TypeScript_Type<"ConstTuple"> {
     Type getType(size_t index) const {
       assert(index >= 0 && index < size() && "invalid index for tuple type");
       return getFields()[index].type;
-    }
+    }  
+
+    ::mlir::typescript::AccessLevel getAccessLevel(size_t index) const {
+      return ::mlir::typescript::AccessLevel::Public;
+    }    
   }];
 }
 
@@ -424,7 +428,11 @@ def TypeScript_Tuple : TypeScript_Type<"Tuple"> {
     Type getType(size_t index) const {
       assert(index >= 0 && index < size() && "invalid index for tuple type");
       return getFields()[index].type;
-    }
+    }   
+
+    ::mlir::typescript::AccessLevel getAccessLevel(size_t index) const {
+      return ::mlir::typescript::AccessLevel::Public;
+    }    
   }];
 }
 
@@ -523,6 +531,10 @@ def TypeScript_ObjectStorage : TypeScript_Type<"ObjectStorage", [IsMutable]> {
     ::llvm::ArrayRef<::mlir::typescript::FieldInfo> getFields() const;
     // Mutator
     LogicalResult setFields(::llvm::ArrayRef<::mlir::typescript::FieldInfo> newFields);
+
+    ::mlir::typescript::AccessLevel getAccessLevel(size_t index) const {
+      return ::mlir::typescript::AccessLevel::Public;
+    }    
   }];
 
   let genStorageClass = 0;
@@ -589,6 +601,11 @@ def TypeScript_ClassStorage : TypeScript_Type<"ClassStorage", [IsMutable]> {
       assert(index >= 0 && index < size() && "invalid index for tuple type");
       return getFields()[index].type;
     }
+
+    ::mlir::typescript::AccessLevel getAccessLevel(size_t index) const {
+      assert(index >= 0 && index < size() && "invalid index for tuple type");
+      return getFields()[index].accessLevel;
+    }    
 
     ::llvm::ArrayRef<::mlir::typescript::FieldInfo> getFields() const;
     // Mutator
@@ -1198,43 +1215,51 @@ def TypeScript_TypePredicate : TypeScript_Type<"TypePredicate"> {
   ];
 }
 
-def TypeScript_IsConstTupleRefType : CPred<"$_self.isa<::mlir::typescript::RefType>() && $_self.cast<::mlir::typescript::RefType>().getElementType().isa<::mlir::typescript::ConstTupleType>()">;
+def TypeScript_IsConstTupleRefType : CPred<"isa<::mlir::typescript::RefType>($_self) && isa<::mlir::typescript::ConstTupleType>(mlir::cast<::mlir::typescript::RefType>($_self).getElementType())">;
 
 def TypeScript_AnyConstTupleRef : DialectType<TypeScript_Dialect, TypeScript_IsConstTupleRefType, "any const tuple reference type">;
 
-def TypeScript_IsTupleRefType : CPred<"$_self.isa<::mlir::typescript::RefType>() && $_self.cast<::mlir::typescript::RefType>().getElementType().isa<::mlir::typescript::TupleType>()">;
+def TypeScript_IsTupleRefType : CPred<"isa<::mlir::typescript::RefType>($_self) && isa<::mlir::typescript::TupleType>(mlir::cast<::mlir::typescript::RefType>($_self).getElementType())">;
 
 def TypeScript_AnyTupleRef : DialectType<TypeScript_Dialect, TypeScript_IsTupleRefType, "any tuple reference type">;
 
-def TypeScript_IsOptionalRefType : CPred<"$_self.isa<::mlir::typescript::RefType>() && $_self.cast<::mlir::typescript::RefType>().getElementType().isa<::mlir::typescript::OptionalType>()">;
+def TypeScript_IsOptionalRefType : CPred<"isa<::mlir::typescript::RefType>($_self) && isa<::mlir::typescript::OptionalType>(mlir::cast<::mlir::typescript::RefType>($_self).getElementType())">;
 
 def TypeScript_AnyOptionalRef : DialectType<TypeScript_Dialect, TypeScript_IsOptionalRefType, "any optional reference type">;
 
-def TypeScript_IsStringRefType : CPred<"$_self.isa<::mlir::typescript::RefType>() && $_self.cast<::mlir::typescript::RefType>().getElementType().isa<::mlir::typescript::StringType>()">;
+def TypeScript_IsStringRefType : CPred<"isa<::mlir::typescript::RefType>($_self) && isa<::mlir::typescript::StringType>(mlir::cast<::mlir::typescript::RefType>($_self).getElementType())">;
 
 def TypeScript_StringRef : DialectType<TypeScript_Dialect, TypeScript_IsStringRefType, "string reference type">;
 
-def TypeScript_IsClassStorageType : CPred<"$_self.isa<::mlir::typescript::ClassStorageType>()">;
+def TypeScript_IsObjectStorageType : CPred<"isa<::mlir::typescript::ObjectStorageType>($_self)">;
+
+def TypeScript_AnyObjectStorageType : DialectType<TypeScript_Dialect, TypeScript_IsObjectStorageType, "any object storage type">;
+
+def TypeScript_IsObjectStorageRefType : CPred<"isa<::mlir::typescript::RefType>($_self) && isa<::mlir::typescript::ObjectStorageType>(mlir::cast<::mlir::typescript::RefType>($_self).getElementType())">;
+
+def TypeScript_AnyObjectStorageRef : DialectType<TypeScript_Dialect, TypeScript_IsObjectStorageRefType, "any object storage reference type">;
+
+def TypeScript_IsClassStorageType : CPred<"isa<::mlir::typescript::ClassStorageType>($_self)">;
 
 def TypeScript_AnyClassStorageType : DialectType<TypeScript_Dialect, TypeScript_IsClassStorageType, "any class storage type">;
 
-def TypeScript_IsClassStorageRefType : CPred<"$_self.isa<::mlir::typescript::RefType>() && $_self.cast<::mlir::typescript::RefType>().getElementType().isa<::mlir::typescript::ClassStorageType>()">;
+def TypeScript_IsClassStorageRefType : CPred<"isa<::mlir::typescript::RefType>($_self) && isa<::mlir::typescript::ClassStorageType>(mlir::cast<::mlir::typescript::RefType>($_self).getElementType())">;
 
-def TypeScript_AnyClassStorageRef : DialectType<TypeScript_Dialect, TypeScript_IsClassStorageRefType, "any tuple reference type">;
+def TypeScript_AnyClassStorageRef : DialectType<TypeScript_Dialect, TypeScript_IsClassStorageRefType, "any class storage reference type">;
 
-def TypeScript_IsOptionalType : CPred<"$_self.isa<::mlir::typescript::OptionalType>()">;
+def TypeScript_IsOptionalType : CPred<"isa<::mlir::typescript::OptionalType>($_self)">;
 
 def TypeScript_AnyOptional : DialectType<TypeScript_Dialect, TypeScript_IsOptionalType, "any optional type">;
 
-def TypeScript_IsArrayRefType : CPred<"$_self.isa<::mlir::typescript::RefType>() && $_self.cast<::mlir::typescript::RefType>().getElementType().isa<::mlir::typescript::ArrayType>()">;
+def TypeScript_IsArrayRefType : CPred<"isa<::mlir::typescript::RefType>($_self) && isa<::mlir::typescript::ArrayType>(mlir::cast<::mlir::typescript::RefType>($_self).getElementType())">;
 
 def TypeScript_AnyArrayRef : DialectType<TypeScript_Dialect, TypeScript_IsArrayRefType, "any array reference type">;
 
-def TypeScript_IsConstArrayValueRefType : CPred<"$_self.isa<::mlir::typescript::RefType>() && $_self.cast<::mlir::typescript::RefType>().getElementType().isa<::mlir::typescript::ConstArrayValueType>()">;
+def TypeScript_IsConstArrayValueRefType : CPred<"isa<::mlir::typescript::RefType>($_self) && isa<::mlir::typescript::ConstArrayValueType>(mlir::cast<::mlir::typescript::RefType>($_self).getElementType())">;
 
 def TypeScript_AnyConstArrayValueRef : DialectType<TypeScript_Dialect, TypeScript_IsConstArrayValueRefType, "any const array value reference type">;
 
-def TypeScript_IsNotUnionType : CPred<"!$_self.isa<::mlir::typescript::UnionType>()">;
+def TypeScript_IsNotUnionType : CPred<"!isa<::mlir::typescript::UnionType>($_self)">;
 
 def TypeScript_NonUnion : DialectType<TypeScript_Dialect, TypeScript_IsNotUnionType, "non-union type">;
 
@@ -1259,7 +1284,7 @@ def TypeScript_AnyRefLikeOrInterface : AnyTypeOf<[
   ]>;
 
 def TypeScript_AnyStructLike : AnyTypeOf<[
-    TypeScript_ConstTuple, TypeScript_Tuple, TypeScript_ConstArrayValue, TypeScript_Class, TypeScript_AnyClassStorageType
+    TypeScript_ConstTuple, TypeScript_Tuple, TypeScript_ConstArrayValue, TypeScript_AnyClassStorageType, TypeScript_AnyObjectStorageType
   ]>;
 
 def TypeScript_RefOrBoundRef : AnyTypeOf<[

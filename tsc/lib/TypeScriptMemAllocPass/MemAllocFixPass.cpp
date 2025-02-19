@@ -1,8 +1,9 @@
-#include "TypeScript/MemAllocFixPass.h"
+#include "TypeScript/Pass/MemAllocFixPass.h"
 
 #include "llvm/IR/PatternMatch.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Module.h"
 
 using namespace llvm;
 using namespace PatternMatch;

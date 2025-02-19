@@ -39,11 +39,14 @@ std::string getDefaultExt(enum Action);
 std::string getDefaultLibPath();
 int compileTypeScriptFileIntoMLIR(mlir::MLIRContext &, llvm::SourceMgr &, mlir::OwningOpRef<mlir::ModuleOp> &, CompileOptions&);
 int runMLIRPasses(mlir::MLIRContext &, llvm::SourceMgr &, mlir::OwningOpRef<mlir::ModuleOp> &, CompileOptions&);
+int createVSCodeFolder(int, char **);
+int installDefaultLib(int, char **);
 int dumpAST();
 int dumpLLVMIR(mlir::ModuleOp, CompileOptions&);
 int dumpObjOrAssembly(int, char **, enum Action, std::string, mlir::ModuleOp, CompileOptions&);
 int dumpObjOrAssembly(int, char **, mlir::ModuleOp, CompileOptions&);
-int buildExe(int, char **, std::string, CompileOptions&);
+int declarationInline(int, char **, mlir::MLIRContext &, llvm::SourceMgr &, llvm::StringRef, CompileOptions&, std::string&);
+int buildExe(int, char **, std::string, std::string, CompileOptions&);
 int runJit(int, char **, mlir::ModuleOp, CompileOptions&);
 
 extern cl::OptionCategory ObjOrAssemblyCategory;
@@ -86,7 +89,7 @@ cl::opt<int> sizeLevel{"size_level", cl::desc("Optimization size level"), cl::Ze
 cl::list<std::string> clSharedLibs{"shared-libs", cl::desc("Libraries to link dynamically. (used in --emit=jit)"), cl::ZeroOrMore, cl::MiscFlags::CommaSeparated,
                                    cl::cat(TypeScriptCompilerCategory)};
 
-cl::opt<std::string> mainFuncName{"e", cl::desc("The function to be called (default=main)"), cl::value_desc("function name"), cl::init("main"), cl::cat(TypeScriptCompilerCategory)};
+cl::opt<std::string> mainFuncName{"e", cl::desc("The function to be called (default=main)"), cl::value_desc("function name"), cl::init(MAIN_ENTRY_NAME), cl::cat(TypeScriptCompilerCategory)};
 
 cl::opt<bool> dumpObjectFile{"dump-object-file", cl::Hidden, cl::desc("Dump JITted-compiled object to file specified with "
         "-object-filename (<input file>.o by default)."), cl::init(false), cl::cat(TypeScriptCompilerDebugCategory)};
@@ -108,6 +111,8 @@ cl::opt<enum Exports> exportAction("export", cl::desc("Export Symbols. (Useful t
                                        cl::values(clEnumValN(IgnoreAll, "none", "ignore all exports")),
                                        cl::cat(TypeScriptCompilerCategory));
 
+cl::opt<bool> embedExportDeclarationsAction("embed-declarations", cl::desc("Embed declarations as member __decls_lib_XXXX. (Needed in 'import' statement)"), cl::init(true), cl::cat(TypeScriptCompilerCategory));
+
 cl::opt<std::string> defaultlibpath("default-lib-path", cl::desc("JS library path. Should point to folder/directory with subfolder '" DEFAULT_LIB_DIR "' or DEFAULT_LIB_PATH environmental variable"), cl::value_desc("defaultlibpath"), cl::cat(TypeScriptCompilerBuildCategory));
 cl::opt<std::string> gclibpath("gc-lib-path", cl::desc("GC library path. Should point to file 'gcmt-lib.lib' or GC_LIB_PATH environmental variable"), cl::value_desc("gclibpath"), cl::cat(TypeScriptCompilerBuildCategory));
 cl::opt<std::string> llvmlibpath("llvm-lib-path", cl::desc("LLVM library path. Should point to file 'LLVMSupport.lib' and 'LLVMDemangle' in linux or LLVM_LIB_PATH environmental variable"), cl::value_desc("llvmlibpath"), cl::cat(TypeScriptCompilerBuildCategory));
@@ -118,10 +123,16 @@ cl::list<std::string> objs{"obj", cl::desc("Object files to link statically. (us
 
 cl::opt<bool> noDefaultLib("no-default-lib", cl::desc("Disable loading default lib"), cl::init(false), cl::cat(TypeScriptCompilerCategory));
 cl::opt<bool> enableBuiltins("builtins", cl::desc("Builtin functionality (needed if Default lib is not provided)"), cl::init(true), cl::cat(TypeScriptCompilerCategory));
+cl::opt<bool> appendGCtorsToMethod("gctors-as-method", cl::desc("Creeate method (" MLIR_GCTORS ") to initialize Static Objects instead of Global Constructors (gctors)"), cl::init(false), cl::cat(TypeScriptCompilerCategory));
+
+cl::opt<bool> strictNullChecks("strict-null-checks", cl::desc("Strict Null Checks"), cl::init(true), cl::cat(TypeScriptCompilerCategory)); 
+
+cl::opt<bool> newVSCodeFolder("new", cl::desc("New VS Code Project"), cl::cat(TypeScriptCompilerCategory));
+cl::opt<bool> installDefaultLibCmd("install-default-lib", cl::desc("Install Default Library. use default-lib-path to provide path where to install the lib"), cl::cat(TypeScriptCompilerCategory));
 
 static void TscPrintVersion(llvm::raw_ostream &OS) {
   OS << "TypeScript Native Compiler (https://github.com/ASDAlexander77/TypeScriptCompiler):" << '\n';
-  OS << "  TSNC version " << TSC_PACKAGE_VERSION << '\n' << '\n';
+  OS << "  TySC version " << TSC_PACKAGE_VERSION << '\n' << '\n';
 
   cl::PrintVersionMessage();
 }
@@ -157,6 +168,33 @@ std::string mergeWithDefaultLibPath(std::string defaultlibpath, std::string subP
     llvm::sys::path::append(path, defaultlibpath, subPath);
     llvm::sys::path::native(path, nativePath);    
     llvm::StringRef str(nativePath.data(), nativePath.size());
+    return str.str();
+}
+
+std::string makeAbsolutePath(std::string subPath)
+{
+    if (subPath.empty())
+    {
+        return "";
+    }
+
+    if (!llvm::sys::fs::exists(subPath))
+    {
+        return "";
+    }
+
+    llvm::SmallVector<char> path(0);
+    llvm::SmallVector<char> nativePath(0);
+    llvm::sys::path::append(path, subPath);
+    llvm::sys::fs::make_absolute(path);
+    llvm::sys::path::native(path, nativePath);    
+    llvm::StringRef str(nativePath.data(), nativePath.size());
+
+    if (!llvm::sys::fs::exists(str))
+    {
+        return "";
+    }
+
     return str.str();
 }
 
@@ -240,6 +278,16 @@ int main(int argc, char **argv)
 
     cl::ParseCommandLineOptions(argc, argv, "TypeScript native compiler\n");
 
+    if (newVSCodeFolder.getValue())
+    {
+        return createVSCodeFolder(argc, argv);
+    }
+
+    if (installDefaultLibCmd.getValue())
+    {
+        return installDefaultLib(argc, argv);
+    }
+
     if (emitAction == Action::DumpAST)
     {
         return dumpAST();
@@ -276,12 +324,12 @@ int main(int argc, char **argv)
 
     llvm::SourceMgr sourceMgr;
     mlir::OwningOpRef<mlir::ModuleOp> module;
-    if (int error = compileTypeScriptFileIntoMLIR(mlirContext, sourceMgr, module, compileOptions))
+    if (auto error = compileTypeScriptFileIntoMLIR(mlirContext, sourceMgr, module, compileOptions))
     {
         return error;
     }
 
-    if (int error = runMLIRPasses(mlirContext, sourceMgr, module, compileOptions))
+    if (auto error = runMLIRPasses(mlirContext, sourceMgr, module, compileOptions))
     {
         return error;
     }
@@ -317,7 +365,17 @@ int main(int argc, char **argv)
             return result;
         }
 
-        return buildExe(argc, argv, tempOutputFile, compileOptions);
+        std::string additionalObjFile{};
+#ifdef GENERATE_IMPORT_INFO_USING_D_TS_FILE        
+        if (emitAction == Action::BuildDll)
+        {
+            // here we need to try to gather *.d.ts for every obj file involved in compilation and build obj file with __decls global variable in it
+            auto fileName = llvm::StringRef(inputFilename);
+            declarationInline(argc, argv, mlirContext, sourceMgr, fileName, compileOptions, additionalObjFile);
+        }
+#endif        
+
+        return buildExe(argc, argv, tempOutputFile, additionalObjFile, compileOptions);
     }
 
     // Otherwise, we must be running the jit.

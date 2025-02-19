@@ -16,8 +16,6 @@ namespace mlir_ts = mlir::typescript;
 namespace typescript
 {
 
-CompileOptions &getCompileOptions();
-
 class TypeHelper
 {
     MLIRContext *context;
@@ -39,6 +37,11 @@ class TypeHelper
     mlir::Type getStringType()
     {
         return mlir_ts::StringType::get(context);
+    }
+
+    mlir::Type getCharType()
+    {
+        return mlir_ts::CharType::get(context);
     }
 
     mlir::Type getUndefinedType()
@@ -96,24 +99,9 @@ class TypeHelper
         return LLVM::LLVMVoidType::get(context);
     }
 
-    LLVM::LLVMPointerType getI8PtrType()
-    {
-        return LLVM::LLVMPointerType::get(getI8Type());
-    }
-
     LLVM::LLVMPointerType getPtrType()
     {
         return LLVM::LLVMPointerType::get(context);
-    }
-
-    LLVM::LLVMPointerType getI8PtrPtrType()
-    {
-        return LLVM::LLVMPointerType::get(LLVM::LLVMPointerType::get(getI8Type()));
-    }
-
-    LLVM::LLVMPointerType getI8PtrPtrPtrType()
-    {
-        return LLVM::LLVMPointerType::get(LLVM::LLVMPointerType::get(LLVM::LLVMPointerType::get(getI8Type())));
     }
 
     LLVM::LLVMArrayType getI8Array(unsigned size)
@@ -124,11 +112,6 @@ class TypeHelper
     LLVM::LLVMArrayType getI32Array(unsigned size)
     {
         return LLVM::LLVMArrayType::get(getI32Type(), size);
-    }
-
-    LLVM::LLVMPointerType getPointerType(mlir::Type elementType)
-    {
-        return LLVM::LLVMPointerType::get(elementType);
     }
 
     LLVM::LLVMArrayType getArrayType(mlir::Type elementType, size_t size)

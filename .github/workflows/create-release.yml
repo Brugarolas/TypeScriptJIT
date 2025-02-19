@@ -9,11 +9,11 @@ on:
 env:
   # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
   BUILD_TYPE: Release
-  CACHE_VERSION: v7
-  LLVM_VERSION: 17
-  LLVM_ZIPFILE: "https://www.dropbox.com/scl/fi/ux7mfco64i5fvsev50ali/llvm_17_release.zip?rlkey=ijghbwhpsuoome38pc4fmzt3a&dl=1"
-  LLVM_TARGZFILE: "https://www.dropbox.com/scl/fi/dp89m4ngxhc9wsxylo5qb/llvm_17_release.tgz?rlkey=o03vi1skezj4me9qh20rsxu93&dl=1"
-  LLVM_UB20_TARGZFILE: "https://www.dropbox.com/scl/fi/yxfwjbni0pbgitekcgryt/llvm_17_release_UB20.tgz?rlkey=cwh0gqvx5ymejwjzgvth0w4ww&dl=1"
+  CACHE_VERSION: v8
+  LLVM_VERSION: 19
+  LLVM_ZIPFILE: "https://www.dropbox.com/scl/fi/xdcj15hlzpod06x4wpls1/llvm_19_1_3_release.zip?rlkey=x38yiyfw3y6bv15z5j3oi84lb&st=bz3u5xkv&dl=1"
+  LLVM_TARGZFILE: "https://www.dropbox.com/scl/fi/l9xrfupdbwqbnckr5g36p/llvm_19_1_3_release.tgz?rlkey=xubw01vl6ey3xszbph32xqfip&st=okz2ghqx&dl=1"
+  LLVM_UB20_TARGZFILE: "https://www.dropbox.com/scl/fi/jfs77u2moymjo57ca4r0s/llvm_19_1_3_release_UB20.tgz?rlkey=tia0bdfa07gaeidepumb1e1fy&st=np5mcrox&dl=1"
 
 jobs:
   build_on_windows:
@@ -294,6 +294,8 @@ jobs:
         # Execute tests defined by the CMake configuration.  
         # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
         run: ctest -j1 -C ${{ env.BUILD_TYPE }} -T test --output-on-failure -T test --output-on-failure
+        env:
+          LLVM_SYMBOLIZER_PATH: ${{github.workspace}}/3rdParty/llvm/release/bin
         
       - name: Create Tar.GZ of Linux Asset
         working-directory: ${{github.workspace}}/__build
@@ -446,6 +448,8 @@ jobs:
         # Execute tests defined by the CMake configuration.  
         # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
         run: ctest -j1 -C ${{ env.BUILD_TYPE }} -T test --output-on-failure -T test --output-on-failure
+        env:
+          LLVM_SYMBOLIZER_PATH: ${{github.workspace}}/3rdParty/llvm/release/bin
         
       - name: Create Tar.GZ of Linux Asset
         working-directory: ${{github.workspace}}/__build

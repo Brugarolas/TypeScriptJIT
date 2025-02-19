@@ -5,7 +5,7 @@
 #include "TypeScript/TypeScriptFunctionPass.h"
 #include "TypeScript/Passes.h"
 #include "TypeScript/TypeScriptPassContext.h"
-#include "TypeScript/ModulePass.h"
+#include "TypeScript/Pass/ModulePass.h"
 
 #include "TypeScript/LowerToLLVMLogic.h"
 
@@ -37,7 +37,11 @@ class GCPass : public mlir::PassWrapper<GCPass, ModulePass>
     {
         auto m = getModule();
 
+        LLVM_DEBUG(llvm::dbgs() << "\n!! GCPass: BEFORE DUMP: \n" << m << "\n";);
+
+        auto added = false;
         m.walk([&](mlir::Operation *op) {
+            // process gctors first
             if (auto funcOp = dyn_cast_or_null<LLVM::LLVMFuncOp>(op))
             {
                 auto symbolAttr = funcOp->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
@@ -49,9 +53,14 @@ class GCPass : public mlir::PassWrapper<GCPass, ModulePass>
                 auto name = std::string(symbolAttr.getValue());
                 if (!funcOp.getBody().empty())
                 {
-                    if (name == "main")
+                    if (!added)
                     {
-                        injectInit(funcOp);
+                        // we are adding to gctos(as method - only)
+                        if (StringRef(name).starts_with(MLIR_GCTORS))
+                        {
+                            added = true;
+                            injectInit(funcOp);
+                        }
                     }
 
                     return;
@@ -78,6 +87,21 @@ class GCPass : public mlir::PassWrapper<GCPass, ModulePass>
                 renameCall(name, callOp);
             }
         });
+
+        if (!added)
+        {
+            // process main
+            if (auto funcOp = dyn_cast_or_null<LLVM::LLVMFuncOp>(m.lookupSymbol(MAIN_ENTRY_NAME)))
+            {
+                if (!funcOp.getBody().empty())
+                {
+                    added = true;
+                    injectInit(funcOp);
+                }
+            }
+        }
+
+        LLVM_DEBUG(llvm::dbgs() << "\n!! GCPass: AFTER DUMP: \n" << m << "\n";);
     }
 
     bool mapName(StringRef name, StringRef modeName, StringRef &newName)
@@ -136,7 +160,7 @@ class GCPass : public mlir::PassWrapper<GCPass, ModulePass>
         StringRef newName;
         StringRef modeAttrValue;
 
-        if (auto modeAttr = callOp->getAttr("mode").dyn_cast_or_null<mlir::StringAttr>())
+        if (auto modeAttr = dyn_cast_or_null<mlir::StringAttr>(callOp->getAttr("mode")))
         {
             modeAttrValue = modeAttr.getValue();
         }
@@ -156,22 +180,24 @@ class GCPass : public mlir::PassWrapper<GCPass, ModulePass>
 
     void injectAtomicDeclaration(LLVM::CallOp memSetCallOp)
     {
-        ConversionPatternRewriter rewriter(memSetCallOp.getContext());
+        PatternRewriter rewriter(memSetCallOp.getContext());
 
         TypeHelper th(memSetCallOp.getContext());
         LLVMCodeHelper ch(memSetCallOp, rewriter, nullptr, tsContext.compileOptions);
-        auto i8PtrTy = th.getI8PtrType();
-        auto gcInitFuncOp = ch.getOrInsertFunction("GC_malloc_atomic", th.getFunctionType(th.getI8PtrType(), mlir::ArrayRef<mlir::Type>{th.getI64Type()}));
+        auto i8PtrTy = th.getPtrType();
+        auto gcInitFuncOp = ch.getOrInsertFunction("GC_malloc_atomic", th.getFunctionType(th.getPtrType(), mlir::ArrayRef<mlir::Type>{th.getI64Type()}));
     }
 
     void injectInit(LLVM::LLVMFuncOp funcOp)
     {
-        ConversionPatternRewriter rewriter(funcOp.getContext());
+        PatternRewriter rewriter(funcOp.getContext());
 
         TypeHelper th(rewriter.getContext());
         LLVMCodeHelper ch(funcOp, rewriter, nullptr, tsContext.compileOptions);
-        auto i8PtrTy = th.getI8PtrType();
+        auto i8PtrTy = th.getPtrType();
         auto gcInitFuncOp = ch.getOrInsertFunction("GC_init", th.getFunctionType(th.getVoidType(), mlir::ArrayRef<mlir::Type>{}));
+
+        rewriter.setInsertionPointToStart(&*funcOp.getBody().begin());
         rewriter.create<LLVM::CallOp>(funcOp->getLoc(), gcInitFuncOp, ValueRange{});
     }
 
@@ -189,7 +215,7 @@ class GCPass : public mlir::PassWrapper<GCPass, ModulePass>
             auto name = probMemAllocCall.getCallee().value();
             if (name == "GC_malloc")
             {
-                ConversionPatternRewriter rewriter(memSetCallOp.getContext());
+                PatternRewriter rewriter(memSetCallOp.getContext());
                 rewriter.replaceOp(memSetCallOp, ValueRange{probMemAllocCall.getResult()});
             }
         }

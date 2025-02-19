@@ -13,9 +13,9 @@ on:
 env:
   # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
   BUILD_TYPE: Release
-  CACHE_VERSION: v7
-  LLVM_VERSION: 17
-  LLVM_TARGZFILE: "https://www.dropbox.com/scl/fi/dp89m4ngxhc9wsxylo5qb/llvm_17_release.tgz?rlkey=o03vi1skezj4me9qh20rsxu93&dl=1"
+  CACHE_VERSION: v8
+  LLVM_VERSION: 19
+  LLVM_TARGZFILE: "https://www.dropbox.com/scl/fi/l9xrfupdbwqbnckr5g36p/llvm_19_1_3_release.tgz?rlkey=xubw01vl6ey3xszbph32xqfip&st=okz2ghqx&dl=1"
 
 jobs:
   build:
@@ -161,4 +161,6 @@ jobs:
       # Execute tests defined by the CMake configuration.  
       # See https://cmake.org/cmake/help/latest/manual/ctest.1.html for more detail
       run: ctest -j1 -C ${{ env.BUILD_TYPE }} -T test --output-on-failure -T test --output-on-failure
+      env:
+        LLVM_SYMBOLIZER_PATH: ${{github.workspace}}/3rdParty/llvm/release/bin
       

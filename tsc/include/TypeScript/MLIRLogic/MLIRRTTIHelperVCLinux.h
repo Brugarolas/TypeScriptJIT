@@ -53,8 +53,8 @@ class MLIRRTTIHelperVCLinux
     SmallVector<TypeNames> types;
 
   public:
-    MLIRRTTIHelperVCLinux(mlir::OpBuilder &rewriter, mlir::ModuleOp &parentModule)
-        : rewriter(rewriter), parentModule(parentModule), mth(rewriter.getContext()), mlh(), mcl(rewriter)
+    MLIRRTTIHelperVCLinux(mlir::OpBuilder &rewriter, mlir::ModuleOp &parentModule, CompileOptions& compileOptions)
+        : rewriter(rewriter), parentModule(parentModule), mth(rewriter.getContext(), compileOptions), mlh(), mcl(rewriter, compileOptions)
     {
         // setI32AsCatchType();
     }
@@ -292,10 +292,7 @@ class MLIRRTTIHelperVCLinux
             return mlir::failure();
         }
 
-        SmallVector<mlir::NamedAttribute> attrs;
-        attrs.push_back({ATTR("Linkage"), ATTR("External")});
-
-        rewriter.create<mlir_ts::GlobalOp>(loc, mth.getOpaqueType(), true, /*LLVM::Linkage::External,*/ name, mlir::Attribute{}, attrs);
+        rewriter.create<mlir_ts::GlobalOp>(loc, mth.getOpaqueType(), true, name, LLVM::Linkage::External);
         return mlir::success();
     }
 
@@ -370,11 +367,7 @@ class MLIRRTTIHelperVCLinux
             return mlir::failure();
         }
 
-        SmallVector<mlir::NamedAttribute> attrs;
-        attrs.push_back({ATTR("Linkage"), ATTR("LinkonceODR")});
-
-        rewriter.create<mlir_ts::GlobalOp>(loc, stringConstType(className, ti), true,
-                                           /*LLVM::Linkage::LinkonceODR,*/ name, mcl.getStringAttrWith0(label), attrs);
+        rewriter.create<mlir_ts::GlobalOp>(loc, stringConstType(className, ti), true, name, LLVM::Linkage::LinkonceODR, mcl.getStringAttrWith0(label));
 
         return mlir::success();
     }
@@ -418,7 +411,7 @@ class MLIRRTTIHelperVCLinux
     mlir::LogicalResult setStructValue(mlir::Location loc, mlir::Value &tupleValue, mlir::Value value, int index)
     {
         auto tpl = tupleValue.getType();
-        assert(tpl.isa<mlir_ts::TupleType>() || tpl.isa<mlir_ts::ConstTupleType>() || tpl.isa<mlir_ts::ConstArrayValueType>());
+        assert(isa<mlir_ts::TupleType>(tpl) || isa<mlir_ts::ConstTupleType>(tpl) || isa<mlir_ts::ConstArrayValueType>(tpl));
         tupleValue = rewriter.create<mlir_ts::InsertPropertyOp>(loc, tpl, value, tupleValue, MLIRHelper::getStructIndex(rewriter, index));
         return mlir::success();
     }
@@ -473,13 +466,8 @@ class MLIRRTTIHelperVCLinux
             return mlir::failure();
         }
 
-        SmallVector<mlir::NamedAttribute> attrs;
-        attrs.push_back({ATTR("Linkage"), ATTR("LinkonceODR")});
-
         auto typeInfoType = getTIType(ti);
-
-        auto globalOp = rewriter.create<mlir_ts::GlobalOp>(loc, typeInfoType, true,
-                                                           /*LLVM::Linkage::LinkonceODR,*/ name, mlir::Attribute{}, attrs);
+        auto globalOp = rewriter.create<mlir_ts::GlobalOp>(loc, typeInfoType, true, name, LLVM::Linkage::LinkonceODR);
 
         {
             setGlobalOpWritingPoint(globalOp);

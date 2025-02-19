@@ -1,0 +1,153 @@
+name: Test - Release - macOS
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+  schedule:
+    # Run weekly on Monday at 18:30 UTC
+    - cron:  '30 18 * * 1'
+
+env:
+  BUILD_TYPE: Release
+
+jobs:
+  build:
+    runs-on: macos-latest
+    # runs-on: macos-12
+    # use this for apple silicon cpus
+    # runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Download 3rd party source - GC
+      continue-on-error: true
+      shell: bash
+      run: curl --insecure -L https://www.hboehm.info/gc/gc_source/gc-8.0.4.tar.gz --output gc-8.0.4.tar.gz
+
+    - name: Download 3rd party source - GC:Atomic_ops
+      continue-on-error: true
+      shell: bash
+      run: curl --insecure -L https://www.hboehm.info/gc/gc_source/libatomic_ops-7.6.10.tar.gz --output libatomic_ops-7.6.10.tar.gz
+
+    - name: UnZip 3rd party source - GC
+      continue-on-error: false
+      shell: bash
+      run: tar -xvzf gc-8.0.4.tar.gz -C ./3rdParty/
+
+    - name: UnZip 3rd party source - GC:Atomic_ops
+      continue-on-error: false
+      shell: bash
+      run: tar -xvzf libatomic_ops-7.6.10.tar.gz -C ./3rdParty/
+
+    - name: Copy Atomic_ops to GC
+      continue-on-error: false
+      shell: bash
+      run: cp -a ./3rdParty/libatomic_ops-7.6.10/ ./3rdParty/gc-8.0.4/libatomic_ops/
+
+    - name: Copy fixes to GC
+      continue-on-error: false
+      shell: bash
+      run: cp -R ./docs/fix/gc/* ./3rdParty/gc-8.0.4/
+
+    - name: Install LLVM and Clang
+      continue-on-error: false
+      shell: bash
+      run: |
+        brew install llvm
+        echo 'export PATH="/opt/homebrew/opt/llvm/bin:$PATH"' >> $HOME/.bash_profile
+        echo 'export LDFLAGS="-L/opt/homebrew/opt/llvm/lib"' >> $HOME/.bash_profile
+        echo 'export CPPFLAGS="-I/opt/homebrew/opt/llvm/include"' >> $HOME/.bash_profile
+        source $HOME/.bash_profile
+
+    - name: Install Ninja
+      continue-on-error: false
+      shell: bash
+      run: brew install ninja
+
+    - name: Create Build Directories
+      shell: bash
+      run: mkdir -p ./__build/tsc/ninja/release ./__build/gc/ninja/release
+
+    - name: Configure GC
+      continue-on-error: false
+      working-directory: ${{github.workspace}}/__build/gc/ninja/release
+      shell: sh
+      run: |
+        export CC=/opt/homebrew/opt/llvm/bin/clang
+        export CXX=/opt/homebrew/opt/llvm/bin/clang++
+        export LDFLAGS="-L/opt/homebrew/opt/llvm/lib -Wl,-rpath,/opt/homebrew/opt/llvm/lib"
+        export CPPFLAGS="-I/opt/homebrew/opt/llvm/include"
+        export CMAKE_PREFIX_PATH="/opt/homebrew/opt/llvm"
+        cmake ../../../../3rdParty/gc-8.0.4 \
+          -DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang \
+          -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++ \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_SHARED_LIBS=OFF \
+          -Denable_cplusplus=ON \
+          -Denable_threads=ON \
+          -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+          -DCMAKE_CXX_STANDARD=14 \
+          -DCMAKE_CXX_STANDARD_REQUIRED=ON \
+          -DCMAKE_CXX_FLAGS="-Wno-deprecated-declarations"
+
+    # TODO: Use this for apple silicon cpus
+      # -DCMAKE_OSX_ARCHITECTURES=arm64 \
+
+    - name: Build GC
+      continue-on-error: false
+      working-directory: ${{github.workspace}}/__build/gc/ninja/release
+      shell: bash
+      run: cmake --build . --config ${{ env.BUILD_TYPE }} -j 8
+
+    - name: Copy GC
+      continue-on-error: false
+      working-directory: ${{github.workspace}}/__build/gc/ninja/release
+      shell: bash
+      run: mkdir -p ../../../../3rdParty/gc/release/; cp ./lib* ../../../../3rdParty/gc/release/
+
+    - name: List GC files
+      continue-on-error: false
+      working-directory: ${{github.workspace}}/3rdParty/gc/release/
+      shell: bash
+      run: ls -l
+
+    - name: Configure TypeScript Compiler
+      working-directory: ${{github.workspace}}/__build/tsc/ninja/release
+      shell: bash
+      run: |
+        export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
+        export LDFLAGS="-L/opt/homebrew/opt/llvm/lib"
+        export CPPFLAGS="-I/opt/homebrew/opt/llvm/include"
+        export CMAKE_PREFIX_PATH="/opt/homebrew/opt/llvm"
+        cmake ../../../../tsc -G "Ninja" \
+          -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+          -DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang \
+          -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm/bin/clang++ \
+          -DLLVM_DIR=/opt/homebrew/opt/llvm/lib/cmake/llvm \
+          -DClang_DIR=/opt/homebrew/opt/llvm/lib/cmake/clang \
+          -DMLIR_DIR=/opt/homebrew/opt/llvm/lib/cmake/mlir \
+          -DCMAKE_CXX_FLAGS="-std=c++20 -Wno-dollar-in-identifier-extension -Wno-deprecated-declarations -Wno-c++20-extensions" \
+          -Wno-dev
+
+    - name: Build TypeScript Compiler
+      working-directory: ${{github.workspace}}/__build/tsc/ninja/release
+      shell: bash
+      run: |
+        export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
+        cmake --build . --config ${{ env.BUILD_TYPE }} -j 4
+
+    - name: Upload TypeScript Compiler Binary
+      uses: actions/upload-artifact@v3
+      with:
+        name: tsc-macos-arm64
+        path: ${{github.workspace}}/__build/tsc/ninja/release/bin/tsc
+        if-no-files-found: error
+
+    #- name: Test
+    #  working-directory: ${{github.workspace}}/__build/tsc/ninja/release
+    #  shell: bash
+    #  run: ctest -j1 -C ${{ env.BUILD_TYPE }} -T test --output-on-failure -T test --output-on-failure
+    #  env:
+    #    LLVM_SYMBOLIZER_PATH: /opt/homebrew/opt/llvm/bin 

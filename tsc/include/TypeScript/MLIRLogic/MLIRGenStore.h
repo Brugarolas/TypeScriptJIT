@@ -12,9 +12,6 @@ using namespace ::typescript;
 using namespace ts;
 namespace mlir_ts = mlir::typescript;
 
-namespace
-{
-
 struct NamespaceInfo;
 using NamespaceInfo_TypePtr = std::shared_ptr<NamespaceInfo>;
 
@@ -25,6 +22,8 @@ struct GenericFunctionInfo
 
     mlir::StringRef name;
 
+    NamespaceInfo_TypePtr elementNamespace;
+
     llvm::SmallVector<TypeParameterDOM::TypePtr> typeParams;
 
     FunctionLikeDeclarationBase functionDeclaration;
@@ -33,9 +32,13 @@ struct GenericFunctionInfo
 
     mlir_ts::FunctionType funcType;
 
-    NamespaceInfo_TypePtr elementNamespace;
-
     llvm::StringMap<std::pair<TypeParameterDOM::TypePtr, mlir::Type>> typeParamsWithArgs;
+
+    mlir::Type thisType;
+    mlir_ts::ClassType thisClassType;
+
+    SourceFile sourceFile;
+    StringRef fileName;
 
     bool processing;
     bool processed;
@@ -70,21 +73,29 @@ enum class Select: int
 
 struct VariableClass
 {
-    VariableClass() : type{VariableType::Const}, isExport{false}, isImport{false}, isPublic{false}, isUsing{false}, isAppendingLinkage{false}, comdat{Select::NotSet}
+    VariableClass() : type{VariableType::Const}, isExport{false}, isImport{false}, isDynamicImport{false}, isPublic{false}, isUsing{false}, isAppendingLinkage{false}, comdat{Select::NotSet}, isUsed{false}, atomic{false}, ordering{0}, syncscope{StringRef()}, isVolatile{false}, nonTemporal{false}, invariant{false}
     {
     }
 
-    VariableClass(VariableType type_) : type{type_}, isExport{false}, isImport{false}, isPublic{false}, isUsing{false}, isAppendingLinkage{false}, comdat{Select::NotSet}
+    VariableClass(VariableType type_) : type{type_}, isExport{false}, isImport{false}, isDynamicImport{false}, isPublic{false}, isUsing{false}, isAppendingLinkage{false}, comdat{Select::NotSet}, isUsed{false}, atomic{false}, ordering{0}, syncscope{StringRef()}, isVolatile{false}, nonTemporal{false}, invariant{false}
     {
     }
 
     VariableType type;
     bool isExport;
     bool isImport;
+    bool isDynamicImport;
     bool isPublic;
     bool isUsing;
     bool isAppendingLinkage;
     Select comdat;
+    bool isUsed;
+    bool atomic; // atomic
+    int ordering; // atomic ordering
+    StringRef syncscope; // atomic syncscope
+    bool isVolatile;
+    bool nonTemporal;
+    bool invariant;
 
     inline VariableClass& operator=(VariableType type_) { type = type_; return *this; }
 
@@ -97,6 +108,7 @@ struct StaticFieldInfo
     mlir::Type type;
     mlir::StringRef globalVariableName;
     int virtualIndex;
+    mlir_ts::AccessLevel accessLevel;
 };
 
 struct MethodInfo
@@ -111,16 +123,17 @@ struct MethodInfo
     bool isAbstract;
     int virtualIndex;
     int orderWeight;
+    mlir_ts::AccessLevel accessLevel;
 };
 
 struct GenericMethodInfo
 {
-  public:
     std::string name;
     // TODO: review usage of funcType (it is inside FunctionPrototypeDOM already)
     mlir_ts::FunctionType funcType;
-    FunctionPrototypeDOM::TypePtr funcOp;
+    FunctionPrototypeDOM::TypePtr funcProto;
     bool isStatic;
+    mlir_ts::AccessLevel accessLevel;
 };
 
 struct VirtualMethodOrInterfaceVTableInfo
@@ -147,6 +160,17 @@ struct AccessorInfo
     bool isStatic;
     bool isVirtual;
     bool isAbstract;
+    mlir_ts::AccessLevel getAccessLevel;
+    mlir_ts::AccessLevel setAccessLevel;
+};
+
+struct IndexInfo
+{
+    mlir_ts::FunctionType indexSignature;
+    mlir_ts::FuncOp get;
+    mlir_ts::FuncOp set;
+    mlir_ts::AccessLevel getAccessLevel;
+    mlir_ts::AccessLevel setAccessLevel;
 };
 
 struct InterfaceFieldInfo
@@ -155,6 +179,7 @@ struct InterfaceFieldInfo
     mlir::Type type;
     bool isConditional;
     int interfacePosIndex;
+    int virtualIndex;
 };
 
 struct InterfaceMethodInfo
@@ -163,6 +188,22 @@ struct InterfaceMethodInfo
     mlir_ts::FunctionType funcType;
     bool isConditional;
     int interfacePosIndex;
+    int virtualIndex;
+};
+
+struct InterfaceAccessorInfo
+{
+    mlir::Type type;
+    std::string name;
+    std::string getMethod;
+    std::string setMethod;
+};
+
+struct InterfaceIndexInfo
+{
+    mlir_ts::FunctionType indexSignature;
+    std::string getMethod;
+    std::string setMethod;
 };
 
 struct VirtualMethodOrFieldInfo
@@ -175,7 +216,7 @@ struct VirtualMethodOrFieldInfo
     {
     }
 
-    VirtualMethodOrFieldInfo(MethodInfo methodInfo, bool isMissing)
+    VirtualMethodOrFieldInfo(MethodInfo VirtualMethodOrFieldInfo, bool isMissing)
         : methodInfo(methodInfo), fieldInfo(), isField(false), isMissing(isMissing)
     {
     }
@@ -201,6 +242,8 @@ struct InterfaceInfo
 
     mlir::StringRef fullName;
 
+    NamespaceInfo_TypePtr elementNamespace;
+
     mlir_ts::InterfaceType interfaceType;
 
     mlir_ts::InterfaceType originInterfaceType;
@@ -210,6 +253,10 @@ struct InterfaceInfo
     llvm::SmallVector<InterfaceFieldInfo> fields;
 
     llvm::SmallVector<InterfaceMethodInfo> methods;
+
+    llvm::SmallVector<InterfaceAccessorInfo> accessors;
+
+    llvm::SmallVector<InterfaceIndexInfo> indexes;
 
     llvm::StringMap<std::pair<TypeParameterDOM::TypePtr, mlir::Type>> typeParamsWithArgs;
 
@@ -231,12 +278,18 @@ struct InterfaceInfo
 
         for (auto &method : methods)
         {
-            tupleFields.push_back({MLIRHelper::TupleFieldName(method.name, context), method.funcType, false});
+            tupleFields.push_back(
+            {
+                MLIRHelper::TupleFieldName(method.name, context), 
+                method.funcType, 
+                method.isConditional, 
+                mlir_ts::AccessLevel::Public
+            });
         }
 
         for (auto &field : fields)
         {
-            tupleFields.push_back({field.id, field.type, false});
+            tupleFields.push_back({field.id, field.type, false, mlir_ts::AccessLevel::Public});
         }
 
         return mlir::success();
@@ -244,8 +297,9 @@ struct InterfaceInfo
 
     mlir::LogicalResult getVirtualTable(
         llvm::SmallVector<VirtualMethodOrFieldInfo> &vtable,
-        std::function<mlir_ts::FieldInfo(mlir::Attribute, mlir::Type, bool)> resolveField,
-        std::function<MethodInfo &(std::string, mlir_ts::FunctionType, bool, int)> resolveMethod)
+        std::function<std::pair<mlir_ts::FieldInfo, mlir::LogicalResult>(mlir::Attribute, mlir::Type, bool)> resolveField,
+        std::function<std::pair<MethodInfo &, mlir::LogicalResult>(std::string, mlir_ts::FunctionType, bool, int)> resolveMethod,
+        bool methodsAsFields = false)
     {
         for (auto &extent : extends)
         {
@@ -258,35 +312,81 @@ struct InterfaceInfo
         // do vtable for current
         for (auto &method : methods)
         {
-            auto &classMethodInfo = resolveMethod(method.name, method.funcType, method.isConditional, method.interfacePosIndex);
-            if (classMethodInfo.name.empty())
+            if (methodsAsFields)
             {
-                if (method.isConditional)
+                auto methodNameAttr = mlir::StringAttr::get(method.funcType.getContext(), method.name);
+                auto [fieldInfo, result] = resolveField(methodNameAttr, method.funcType, method.isConditional);
+                if (mlir::failed(result))
                 {
-                    MethodInfo missingMethod;
-                    missingMethod.name = method.name;
-                    missingMethod.funcType = method.funcType;
-                    vtable.push_back({missingMethod, true});
+                    return mlir::failure();
+                }
+
+                if (!fieldInfo.id)
+                {
+                    if (method.isConditional)
+                    {
+                        MethodInfo missingMethod;
+                        missingMethod.name = method.name;
+                        missingMethod.funcType = method.funcType;
+                        method.virtualIndex = -1;
+                        vtable.push_back({missingMethod, true});
+                    }
+                    else
+                    {
+                        return mlir::failure();
+                    }
                 }
                 else
                 {
-                    return mlir::failure();
+                    method.virtualIndex = vtable.size();
+                    vtable.push_back({fieldInfo});
                 }
             }
             else
             {
-                vtable.push_back({classMethodInfo});
+                auto [classMethodInfo, result] = resolveMethod(method.name, method.funcType, method.isConditional, method.interfacePosIndex);
+                if (mlir::failed(result))
+                {
+                    return mlir::failure();
+                }
+
+                if (classMethodInfo.name.empty())
+                {
+                    if (method.isConditional)
+                    {
+                        MethodInfo missingMethod;
+                        missingMethod.name = method.name;
+                        missingMethod.funcType = method.funcType;
+                        method.virtualIndex = -1;
+                        vtable.push_back({missingMethod, true});
+                    }
+                    else
+                    {
+                        return mlir::failure();
+                    }
+                }
+                else
+                {
+                    method.virtualIndex = vtable.size();
+                    vtable.push_back({classMethodInfo});
+                }
             }
         }
 
         for (auto &field : fields)
         {
-            auto fieldInfo = resolveField(field.id, field.type, field.isConditional);
+            auto [fieldInfo, result] = resolveField(field.id, field.type, field.isConditional);
+            if (mlir::failed(result))
+            {
+                return mlir::failure();
+            }
+
             if (!fieldInfo.id)
             {
                 if (field.isConditional)
                 {
-                    mlir_ts::FieldInfo missingField{field.id, field.type};
+                    mlir_ts::FieldInfo missingField{field.id, field.type, false, mlir_ts::AccessLevel::Public};
+                    field.virtualIndex = -1;
                     vtable.push_back({missingField, true});
                 }
                 else
@@ -296,6 +396,7 @@ struct InterfaceInfo
             }
             else
             {
+                field.virtualIndex = vtable.size();
                 vtable.push_back({fieldInfo});
             }
         }
@@ -319,7 +420,15 @@ struct InterfaceInfo
         return (signed)dist >= (signed)fields.size() ? -1 : dist;
     }
 
-    InterfaceFieldInfo *findField(mlir::Attribute id, int &totalOffset)
+    int getAccessorIndex(mlir::StringRef name)
+    {
+        auto dist = std::distance(
+            accessors.begin(), std::find_if(accessors.begin(), accessors.end(),
+                                          [&](InterfaceAccessorInfo accessorInfo) { return name == accessorInfo.name; }));
+        return (signed)dist >= (signed)accessors.size() ? -1 : dist;
+    }
+
+    InterfaceFieldInfo *findField(mlir::Attribute id)
     {
         auto index = getFieldIndex(id);
         if (index >= 0)
@@ -329,11 +438,9 @@ struct InterfaceInfo
 
         for (auto &extent : extends)
         {
-            auto totalOffsetLocal = 0;
-            auto field = std::get<1>(extent)->findField(id, totalOffsetLocal);
+            auto field = std::get<1>(extent)->findField(id);
             if (field)
             {
-                totalOffset = std::get<0>(extent) + totalOffsetLocal;
                 return field;
             }
         }
@@ -344,7 +451,7 @@ struct InterfaceInfo
         return nullptr;
     }
 
-    InterfaceMethodInfo *findMethod(mlir::StringRef name, int &totalOffset)
+    InterfaceMethodInfo *findMethod(mlir::StringRef name)
     {
         auto index = getMethodIndex(name);
         if (index >= 0)
@@ -354,17 +461,51 @@ struct InterfaceInfo
 
         for (auto &extent : extends)
         {
-            auto totalOffsetLocal = 0;
-            auto *method = std::get<1>(extent)->findMethod(name, totalOffsetLocal);
-            if (method)
+            if (auto *method = std::get<1>(extent)->findMethod(name))
             {
-                totalOffset = std::get<0>(extent) + totalOffsetLocal;
                 return method;
             }
         }
 
         return nullptr;
     }
+
+    InterfaceAccessorInfo *findAccessor(mlir::StringRef name)
+    {
+        auto index = getAccessorIndex(name);
+        if (index >= 0)
+        {
+            return &accessors[index];
+        }
+
+        for (auto &extent : extends)
+        {
+            if (auto *accessor = std::get<1>(extent)->findAccessor(name))
+            {
+                return accessor;
+            }
+        }
+
+        return nullptr;
+    }
+
+    InterfaceIndexInfo *findIndexer()
+    {
+        if (indexes.size() > 0)
+        {
+            return &indexes[0];
+        }
+
+        for (auto &extent : extends)
+        {
+            if (auto *indexer = std::get<1>(extent)->findIndexer())
+            {
+                return indexer;
+            }
+        }
+
+        return nullptr;
+    }    
 
     int getNextVTableMemberIndex()
     {
@@ -379,7 +520,8 @@ struct InterfaceInfo
             offset += std::get<1>(extent)->getVTableSize();
         }
 
-        return offset + fields.size() + methods.size();
+        // as I remember methods are first in interfaces
+        return offset + methods.size() + fields.size();
     }
 
     void recalcOffsets()
@@ -402,13 +544,16 @@ struct GenericInterfaceInfo
 
     mlir::StringRef fullName;
 
+    NamespaceInfo_TypePtr elementNamespace;
+
     llvm::SmallVector<TypeParameterDOM::TypePtr> typeParams;
 
     mlir_ts::InterfaceType interfaceType;
 
     InterfaceDeclaration interfaceDeclaration;
 
-    NamespaceInfo_TypePtr elementNamespace;
+    SourceFile sourceFile;
+    StringRef fileName;
 
     GenericInterfaceInfo()
     {
@@ -425,12 +570,32 @@ struct ImplementInfo
 enum class ProcessingStages : int {
     NotSet = 0,
     ErrorInStorageClass = 1,
-    Processing = 2,
-    ProcessingStorageClass = 3,
-    ProcessedStorageClass = 4,
-    ProcessingBody = 5,
-    ProcessedBody = 6,
-    Processed = 7,
+    ErrorInMembers = 2,
+    ErrorInBaseInterfaces = 3,
+    ErrorInHeritageClauseImplements = 4,
+    ErrorInVTable = 5,
+    Processing = 6,
+    ProcessingStorageClass = 7,
+    ProcessedStorageClass = 8,
+    ProcessingBody = 9,
+    ProcessedBody = 10,
+    Processed = 11,
+};
+
+struct EnumInfo
+{
+  public:
+    using TypePtr = std::shared_ptr<EnumInfo>;
+
+    mlir::StringRef name;
+
+    mlir::StringRef fullName;
+
+    NamespaceInfo_TypePtr elementNamespace;
+
+    mlir_ts::EnumType enumType;
+
+    EnumInfo() = default;
 };
 
 struct ClassInfo
@@ -441,6 +606,8 @@ struct ClassInfo
     mlir::StringRef name;
 
     mlir::StringRef fullName;
+
+    NamespaceInfo_TypePtr elementNamespace;
 
     mlir_ts::ClassType classType;
 
@@ -458,6 +625,8 @@ struct ClassInfo
 
     llvm::SmallVector<AccessorInfo> accessors;
 
+    llvm::SmallVector<IndexInfo> indexes;
+
     NodeArray<ClassElement> extraMembers;
     NodeArray<ClassElement> extraMembersPost;
 
@@ -466,6 +635,7 @@ struct ClassInfo
     bool isDeclaration;
     bool hasNew;
     bool hasConstructor;
+    mlir_ts::AccessLevel constructorAccessLevel;
     bool hasInitializers;
     bool hasStaticConstructor;
     bool hasStaticInitializers;
@@ -481,7 +651,7 @@ struct ClassInfo
     ProcessingStages processing;
 
     ClassInfo()
-        : isDeclaration(false), hasNew(false), hasConstructor(false), hasInitializers(false), hasStaticConstructor(false),
+        : isDeclaration(false), hasNew(false), hasConstructor(false), constructorAccessLevel(mlir_ts::AccessLevel::Public), hasInitializers(false), hasStaticConstructor(false),
           hasStaticInitializers(false), hasVirtualTable(false), isAbstract(false), isExport(false), isImport(false), 
           isPublic(false), isDynamicImport(false), hasRTTI(false),
           processingAtEvaluation(ProcessingStages::NotSet), processing(ProcessingStages::NotSet)
@@ -497,7 +667,7 @@ struct ClassInfo
 
         for (auto &base : baseClasses)
         {
-            if (base->hasConstructor)
+            if (base->getHasConstructor())
             {
                 return true;
             }
@@ -505,6 +675,24 @@ struct ClassInfo
 
         return false;
     }
+
+    auto getConstructorAccessLevel() -> mlir_ts::AccessLevel
+    {
+        if (hasConstructor)
+        {
+            return constructorAccessLevel;
+        }
+
+        for (auto &base : baseClasses)
+        {
+            if (base->hasConstructor)
+            {
+                return base->getConstructorAccessLevel();
+            }
+        }
+
+        return mlir_ts::AccessLevel::Public;
+    }    
 
     auto getHasVirtualTable() -> bool
     {
@@ -515,7 +703,7 @@ struct ClassInfo
 
         for (auto &base : baseClasses)
         {
-            if (base->hasVirtualTable)
+            if (base->getHasVirtualTable())
             {
                 return true;
             }
@@ -533,7 +721,7 @@ struct ClassInfo
 
         for (auto &base : baseClasses)
         {
-            if (base->hasVirtualTable)
+            if (base->getHasVirtualTable())
             {
                 return false;
             }
@@ -641,6 +829,19 @@ struct ClassInfo
         return true;
     }
 
+    auto hasBase(mlir_ts::ClassType classType) -> bool
+    {
+        for (auto &base : baseClasses)
+        {
+            if (base->classType == classType || base->hasBase(classType))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /// Iterate over the held elements.
     using iterator = ArrayRef<::mlir::typescript::FieldInfo>::iterator;
 
@@ -672,7 +873,7 @@ struct ClassInfo
 
     unsigned fieldsCount()
     {
-        auto storageClass = classType.getStorageType().cast<mlir_ts::ClassStorageType>();
+        auto storageClass = cast<mlir_ts::ClassStorageType>(classType.getStorageType());
         return storageClass.size();
     }
 
@@ -680,7 +881,7 @@ struct ClassInfo
     {
         if (index >= 0)
         {
-            auto storageClass = classType.getStorageType().cast<mlir_ts::ClassStorageType>();
+            auto storageClass = cast<mlir_ts::ClassStorageType>(classType.getStorageType());
             return storageClass.getFieldInfo(index);
         }
 
@@ -690,7 +891,7 @@ struct ClassInfo
     mlir_ts::FieldInfo findField(mlir::Attribute id, bool &foundField)
     {
         foundField = false;
-        auto storageClass = classType.getStorageType().cast<mlir_ts::ClassStorageType>();
+        auto storageClass = cast<mlir_ts::ClassStorageType>(classType.getStorageType());
         auto index = storageClass.getIndex(id);
         if (index >= 0)
         {
@@ -759,13 +960,16 @@ struct GenericClassInfo
 
     mlir::StringRef fullName;
 
+    NamespaceInfo_TypePtr elementNamespace;
+
     llvm::SmallVector<TypeParameterDOM::TypePtr> typeParams;
 
     mlir_ts::ClassType classType;
 
     ClassLikeDeclaration classDeclaration;
 
-    NamespaceInfo_TypePtr elementNamespace;
+    SourceFile sourceFile;
+    StringRef fileName;
 
     GenericClassInfo()
     {
@@ -795,7 +999,7 @@ struct NamespaceInfo
 
     llvm::StringMap<llvm::SmallVector<mlir::typescript::FieldInfo>> localVarsInThisContextMap;
 
-    llvm::StringMap<mlir::Type> typeAliasMap;
+    llvm::StringMap<std::pair<mlir::Type, TypeNode>> typeAliasMap;
 
     llvm::StringMap<std::pair<llvm::SmallVector<TypeParameterDOM::TypePtr>, TypeNode>> genericTypeAliasMap;
 
@@ -817,8 +1021,6 @@ struct NamespaceInfo
 
     NamespaceInfo::TypePtr parentNamespace;
 };
-
-} // namespace
 
 #undef DEBUG_TYPE
 

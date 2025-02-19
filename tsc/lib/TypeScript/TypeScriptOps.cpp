@@ -8,12 +8,12 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinTypes.h"
 #include "mlir/IR/DialectImplementation.h"
-#include "mlir/IR/FunctionImplementation.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "mlir/Interfaces/FunctionImplementation.h"
 
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/ADT/MapVector.h"
@@ -23,6 +23,8 @@
 
 using namespace mlir;
 namespace mlir_ts = mlir::typescript;
+
+CompileOptions& getCompileOptions();
 
 /// Default callback for IfOp builders. Inserts a yield without arguments.
 void mlir_ts::buildTerminatedBody(OpBuilder &builder, Location loc)
@@ -48,7 +50,7 @@ bool mlir_ts::isTrue(mlir::Region &condtion)
 
         if (auto constOp = condVal.getDefiningOp<mlir_ts::ConstantOp>())
         {
-            if (auto boolAttr = constOp.getValueAttr().dyn_cast<mlir::BoolAttr>())
+            if (auto boolAttr = dyn_cast<mlir::BoolAttr>(constOp.getValueAttr()))
             {
                 return boolAttr.getValue();
             }
@@ -175,9 +177,8 @@ mlir_ts::FunctionType mlir_ts::FunctionType::getWithArgsAndResults(ArrayRef<unsi
                                                                    TypeRange resultTypes)
 {
     SmallVector<Type> argStorage, resultStorage;
-    TypeRange newArgTypes = function_interface_impl::insertTypesInto(getInputs(), argIndices, argTypes, argStorage);
-    TypeRange newResultTypes =
-        function_interface_impl::insertTypesInto(getResults(), resultIndices, resultTypes, resultStorage);
+    TypeRange newArgTypes = insertTypesInto(getInputs(), argIndices, argTypes, argStorage);
+    TypeRange newResultTypes = insertTypesInto(getResults(), resultIndices, resultTypes, resultStorage);
     return clone(newArgTypes, newResultTypes);
 }
 
@@ -186,8 +187,8 @@ mlir_ts::FunctionType mlir_ts::FunctionType::getWithoutArgsAndResults(const BitV
                                                                       const BitVector &resultIndices)
 {
     SmallVector<Type> argStorage, resultStorage;
-    TypeRange newArgTypes = function_interface_impl::filterTypesOut(getInputs(), argIndices, argStorage);
-    TypeRange newResultTypes = function_interface_impl::filterTypesOut(getResults(), resultIndices, resultStorage);
+    TypeRange newArgTypes = filterTypesOut(getInputs(), argIndices, argStorage);
+    TypeRange newResultTypes = filterTypesOut(getResults(), resultIndices, resultStorage);
     return clone(newArgTypes, newResultTypes);
 }
 
@@ -283,6 +284,18 @@ OpFoldResult mlir_ts::ConstantOp::fold(FoldAdaptor adaptor)
     return getValue();
 }
 
+//===----------------------------------------------------------------------===//
+// SafeCastOp
+//===----------------------------------------------------------------------===//
+OpFoldResult mlir_ts::SafeCastOp::fold(FoldAdaptor adaptor)
+{
+    ArrayRef<Attribute> operands = adaptor.getOperands();
+    // TODO: investigate why it is empty
+    //assert(operands.empty() && "safeCast has no operands");
+    return getSafe();
+}
+
+
 namespace
 {
 template <typename T> struct RemoveUnused : public OpRewritePattern<T>
@@ -337,22 +350,90 @@ void mlir_ts::ThisVirtualSymbolRefOp::getCanonicalizationPatterns(RewritePattern
     results.insert<RemoveUnused<mlir_ts::ThisVirtualSymbolRefOp>>(context);
 }
 
+namespace
+{
+template <typename T> struct RemoveUnusedAccessor : public OpRewritePattern<T>
+{
+    using OpRewritePattern<T>::OpRewritePattern;
+
+    LogicalResult matchAndRewrite(T op, PatternRewriter &rewriter) const override
+    {
+        if (op.getSetValue())
+        {
+            return success();
+        }
+
+        if (op.getValue().use_empty())
+        {
+            rewriter.eraseOp(op);
+        }
+
+        return success();
+    }
+};
+} // end anonymous namespace.
+
 //===----------------------------------------------------------------------===//
 // AccessorRefOp
 //===----------------------------------------------------------------------===//
 
 void mlir_ts::AccessorOp::getCanonicalizationPatterns(RewritePatternSet &results, MLIRContext *context)
 {
-    results.insert<RemoveUnused<mlir_ts::AccessorOp>>(context);
+    results.insert<RemoveUnusedAccessor<mlir_ts::AccessorOp>>(context);
 }
 
 //===----------------------------------------------------------------------===//
-// ThisAccessorRefOp
+// ThisAccessorOp
 //===----------------------------------------------------------------------===//
 
 void mlir_ts::ThisAccessorOp::getCanonicalizationPatterns(RewritePatternSet &results, MLIRContext *context)
 {
-    results.insert<RemoveUnused<mlir_ts::ThisAccessorOp>>(context);
+    results.insert<RemoveUnusedAccessor<mlir_ts::ThisAccessorOp>>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// ThisIndirectAccessorOp
+//===----------------------------------------------------------------------===//
+
+void mlir_ts::ThisIndirectAccessorOp::getCanonicalizationPatterns(RewritePatternSet &results, MLIRContext *context)
+{
+    results.insert<RemoveUnusedAccessor<mlir_ts::ThisIndirectAccessorOp>>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// ThisIndexAccessorOp
+//===----------------------------------------------------------------------===//
+
+void mlir_ts::ThisIndexAccessorOp::getCanonicalizationPatterns(RewritePatternSet &results, MLIRContext *context)
+{
+    results.insert<RemoveUnusedAccessor<mlir_ts::ThisIndexAccessorOp>>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// ThisIndirectIndexAccessorOp
+//===----------------------------------------------------------------------===//
+
+void mlir_ts::ThisIndirectIndexAccessorOp::getCanonicalizationPatterns(RewritePatternSet &results, MLIRContext *context)
+{
+    results.insert<RemoveUnusedAccessor<mlir_ts::ThisIndirectIndexAccessorOp>>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// BoundIndirectAccessorOp
+//===----------------------------------------------------------------------===//
+
+void mlir_ts::BoundIndirectAccessorOp::getCanonicalizationPatterns(RewritePatternSet &results, MLIRContext *context)
+{
+    results.insert<RemoveUnusedAccessor<mlir_ts::BoundIndirectAccessorOp>>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// BoundIndirectIndexAccessorOp
+//===----------------------------------------------------------------------===//
+
+void mlir_ts::BoundIndirectIndexAccessorOp::getCanonicalizationPatterns(RewritePatternSet &results, MLIRContext *context)
+{
+    results.insert<RemoveUnusedAccessor<mlir_ts::BoundIndirectIndexAccessorOp>>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -512,12 +593,12 @@ LogicalResult mlir_ts::CastOp::verify()
     auto resType = getRes().getType();
 
     // funcType -> funcType
-    auto inFuncType = inType.dyn_cast<mlir_ts::FunctionType>();
-    auto resFuncType = resType.dyn_cast<mlir_ts::FunctionType>();
+    auto inFuncType = dyn_cast<mlir_ts::FunctionType>(inType);
+    auto resFuncType = dyn_cast<mlir_ts::FunctionType>(resType);
     if (inFuncType && resFuncType)
     {
-        ::typescript::MLIRTypeHelper mth(getContext());
-        auto result = mth.TestFunctionTypesMatchWithObjectMethods(inFuncType, resFuncType);
+        ::typescript::MLIRTypeHelper mth(getContext(), getCompileOptions());
+        auto result = mth.TestFunctionTypesMatchWithObjectMethods(getLoc(), inFuncType, resFuncType);
         if (::typescript::MatchResultType::Match != result.result)
         {
             emitError("can't cast function type ") << inFuncType << "[" << inFuncType.getNumInputs() << "] to type " << resFuncType
@@ -529,7 +610,7 @@ LogicalResult mlir_ts::CastOp::verify()
     }
 
     // optional<T> -> <T>
-    if (auto inOptType = inType.dyn_cast<mlir_ts::OptionalType>())
+    if (auto inOptType = dyn_cast<mlir_ts::OptionalType>(inType))
     {
         if (inOptType.getElementType() == resType)
         {
@@ -537,7 +618,7 @@ LogicalResult mlir_ts::CastOp::verify()
         }
     }
 
-    if (auto resOptType = resType.dyn_cast<mlir_ts::OptionalType>())
+    if (auto resOptType = dyn_cast<mlir_ts::OptionalType>(resType))
     {
         if (resOptType.getElementType() == inType)
         {
@@ -545,18 +626,18 @@ LogicalResult mlir_ts::CastOp::verify()
         }
     }
 
-    if (resType.isa<mlir_ts::AnyType>())
+    if (isa<mlir_ts::AnyType>(resType))
     {
         return success();
     }
 
     // check if we can cast type to union type
-    auto inUnionType = inType.dyn_cast<mlir_ts::UnionType>();
-    auto resUnionType = resType.dyn_cast<mlir_ts::UnionType>();
+    auto inUnionType = dyn_cast<mlir_ts::UnionType>(inType);
+    auto resUnionType = dyn_cast<mlir_ts::UnionType>(resType);
     if (inUnionType || resUnionType)
     {
-        ::typescript::MLIRTypeHelper mth(getContext());
-        auto cmpTypes = [&](mlir::Type t1, mlir::Type t2) { return mth.canCastFromTo(t1, t2); };
+        ::typescript::MLIRTypeHelper mth(getContext(), getCompileOptions());
+        auto cmpTypes = [&](mlir::Type t1, mlir::Type t2) { return mth.canCastFromTo(getLoc(), t1, t2); };
 
         if (inUnionType && !resUnionType)
         {
@@ -566,9 +647,9 @@ LogicalResult mlir_ts::CastOp::verify()
             auto types = inUnionType.getTypes();
             if (!std::all_of(types.begin(), types.end(), pred))
             {
-                ::typescript::MLIRTypeHelper mth(getContext());
+                ::typescript::MLIRTypeHelper mth(getContext(), getCompileOptions());
                 mlir::Type baseType;
-                if (!mth.isUnionTypeNeedsTag(inUnionType, baseType)/* && mth.canCastFromTo(baseType, resType)*/)
+                if (!mth.isUnionTypeNeedsTag(getLoc(), inUnionType, baseType)/* && mth.canCastFromTo(baseType, resType)*/)
                 {
                     // we need to ignore this case, for example if union<int, int, int> -> string, we need cast int to string
                     return success();
@@ -582,10 +663,17 @@ LogicalResult mlir_ts::CastOp::verify()
 
         if (!inUnionType && resUnionType)
         {
+            ::typescript::MLIRTypeHelper mth(getContext(), getCompileOptions());
+            mlir::Type baseType;
+            if (!mth.isUnionTypeNeedsTag(getLoc(), resUnionType, baseType)/* && mth.canCastFromTo(baseType, resType)*/)
+            {
+                // we need to ignore this case, for example if union<int, int, int> -> string, we need cast int to string
+                return success();
+            }
+
             // TODO: review using "undefined", use proper union type
             auto effectiveInType = mth.stripOptionalType(inType);
-
-            if (!effectiveInType.isa<mlir_ts::UndefinedType>())
+            if (!isa<mlir_ts::UndefinedType>(effectiveInType))
             {
                 auto pred = [&](auto &item) { 
                     return cmpTypes(effectiveInType, item); 
@@ -629,6 +717,8 @@ struct NormalizeCast : public OpRewritePattern<mlir_ts::CastOp>
 
     LogicalResult matchAndRewrite(mlir_ts::CastOp castOp, PatternRewriter &rewriter) const override
     {
+        auto location = castOp.getLoc();
+
         // TODO: finish it
         auto in = castOp.getIn();
         auto res = castOp.getRes();
@@ -671,17 +761,17 @@ struct NormalizeCast : public OpRewritePattern<mlir_ts::CastOp>
 
         // union support
         // TODO: review this code, should it be in "cast" logic?
-        if (res.getType().isa<mlir_ts::AnyType>())
+        if (isa<mlir_ts::AnyType>(res.getType()))
         {
             return success();
         }
 
-        auto resUnionType = res.getType().dyn_cast<mlir_ts::UnionType>();
-        auto inUnionType = in.getType().dyn_cast<mlir_ts::UnionType>();
+        auto resUnionType = dyn_cast<mlir_ts::UnionType>(res.getType());
+        auto inUnionType = dyn_cast<mlir_ts::UnionType>(in.getType());
         if (resUnionType && !inUnionType)
         {
-            ::typescript::MLIRTypeHelper mth(rewriter.getContext());
-            if (mth.isUnionTypeNeedsTag(resUnionType))
+            ::typescript::MLIRTypeHelper mth(rewriter.getContext(), getCompileOptions());
+            if (mth.isUnionTypeNeedsTag(location, resUnionType))
             {
                 // TODO: boxing, finish it, need to send TypeOf
                 auto typeOfValue = rewriter.create<mlir_ts::TypeOfOp>(loc, mlir_ts::StringType::get(rewriter.getContext()), in);
@@ -695,8 +785,8 @@ struct NormalizeCast : public OpRewritePattern<mlir_ts::CastOp>
         // TODO: review it, if you still need it as we are should be using "safeCast"
         if (inUnionType && !resUnionType)
         {
-            ::typescript::MLIRTypeHelper mth(rewriter.getContext());
-            if (mth.isUnionTypeNeedsTag(inUnionType))
+            ::typescript::MLIRTypeHelper mth(rewriter.getContext(), getCompileOptions());
+            if (mth.isUnionTypeNeedsTag(location, inUnionType))
             {
                 auto value = rewriter.create<mlir_ts::GetValueFromUnionOp>(loc, res.getType(), in);
                 rewriter.replaceOp(castOp, ValueRange{value});
@@ -748,6 +838,25 @@ bool mlir_ts::DialectCastOp::areCastCompatible(TypeRange inputs, TypeRange outpu
 
     // for now all are true
     return true;
+}
+
+//===----------------------------------------------------------------------===//
+// SafeCastOp
+//===----------------------------------------------------------------------===//
+
+/// Returns true if the given set of input and result types are compatible with
+/// this cast operation. This is required by the `CastOpInterface` to verify
+/// this operation and provide other additional utilities.
+bool mlir_ts::SafeCastOp::areCastCompatible(TypeRange inputs, TypeRange outputs)
+{
+    if (inputs.size() != 2 || outputs.size() != 1)
+    {
+        // not supporting N->N cast
+        return false;
+    }
+
+    // for now all are true
+    return inputs.front() == outputs.front();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1038,12 +1147,12 @@ LogicalResult mlir_ts::CallIndirectOp::verifySymbolUses(SymbolTableCollection &s
     mlir::ArrayRef<mlir::Type> results;
 
     // Verify that the operand and result types match the callee.
-    if (auto funcType = getCallee().getType().dyn_cast<mlir_ts::FunctionType>())
+    if (auto funcType = dyn_cast<mlir_ts::FunctionType>(getCallee().getType()))
     {
         input = funcType.getInputs();
         results = funcType.getResults();
     }
-    else if (auto hybridFuncType = getCallee().getType().dyn_cast<mlir_ts::HybridFunctionType>())
+    else if (auto hybridFuncType = dyn_cast<mlir_ts::HybridFunctionType>(getCallee().getType()))
     {
         input = hybridFuncType.getInputs();
         results = hybridFuncType.getResults();
@@ -1126,7 +1235,7 @@ struct SimplifyIndirectCallWithKnownCallee : public OpRewritePattern<mlir_ts::Ca
                     if (hasThis)
                     {
                         auto neededThisForCall = 
-                            createBoundFunctionOp.getType().cast<mlir_ts::BoundFunctionType>().getInput(0) == thisValStripedCast.getType() 
+                            cast<mlir_ts::BoundFunctionType>(createBoundFunctionOp.getType()).getInput(0) == thisValStripedCast.getType() 
                                 ? thisValStripedCast 
                                 : thisVal;
 
@@ -1299,105 +1408,84 @@ static void replaceOpWithRegion(PatternRewriter &rewriter, Operation *op, Region
 /// during the flow of control. `operands` is a set of optional attributes that
 /// correspond to a constant value for each operand, or null if that operand is
 /// not a constant.
-void mlir_ts::IfOp::getSuccessorRegions(std::optional<unsigned> index, ArrayRef<Attribute> operands, SmallVectorImpl<RegionSuccessor> &regions)
+void mlir_ts::IfOp::getSuccessorRegions(RegionBranchPoint point, SmallVectorImpl<RegionSuccessor> &regions)
 {
-    // The `then` and the `else` region branch back to the parent operation.
-    if (index)
-    {
-        regions.push_back(RegionSuccessor(getResults()));
+    // If the predecessor is an AffineIfOp, then branching into both `then` and
+    // `else` region is valid.
+    if (point.isParent()) {
+        regions.reserve(2);
+        regions.push_back(
+            RegionSuccessor(&getThenRegion(), getThenRegion().getArguments()));
+        // If the "else" region is empty, branch bach into parent.
+        if (getElseRegion().empty()) {
+            regions.push_back(getResults());
+        } else {
+            regions.push_back(
+                RegionSuccessor(&getElseRegion(), getElseRegion().getArguments()));
+        }
         return;
     }
 
-    // Don't consider the else region if it is empty.
-    Region *elseRegion = &this->getElseRegion();
-    if (elseRegion->empty())
-    {
-        elseRegion = nullptr;
-    }
-
-    // Otherwise, the successor is dependent on the condition.
-    bool condition;
-    if (auto condAttr = operands.front().dyn_cast_or_null<IntegerAttr>())
-    {
-        condition = condAttr.getValue().isOne();
-    }
-    else
-    {
-        // If the condition isn't constant, both regions may be executed.
-        regions.push_back(RegionSuccessor(&getThenRegion()));
-        regions.push_back(RegionSuccessor(elseRegion));
-        return;
-    }
-
-    // Add the successor regions using the condition.
-    regions.push_back(RegionSuccessor(condition ? &getThenRegion() : elseRegion));
+    // If the predecessor is the `else`/`then` region, then branching into parent
+    // op is valid.
+    regions.push_back(RegionSuccessor(getResults()));
 }
 
 //===----------------------------------------------------------------------===//
 // WhileOp
 //===----------------------------------------------------------------------===//
 
-OperandRange mlir_ts::WhileOp::getSuccessorEntryOperands(std::optional<unsigned int> index)
+OperandRange mlir_ts::WhileOp::getEntrySuccessorOperands(RegionBranchPoint point)
 {
-    assert((!index || *index == 0) && "WhileOp is expected to branch only to the first region");
-
     return getInits();
 }
 
-void mlir_ts::WhileOp::getSuccessorRegions(std::optional<unsigned> index, ArrayRef<Attribute> operands,
-                                           SmallVectorImpl<RegionSuccessor> &regions)
+void mlir_ts::WhileOp::getSuccessorRegions(RegionBranchPoint point, SmallVectorImpl<RegionSuccessor> &regions)
 {
-    (void)operands;
-
-    if (!index)
-    {
+    // The parent op always branches to the condition region.
+    if (point.isParent()) {
         regions.emplace_back(&getCond(), getCond().getArguments());
         return;
     }
 
-    assert(*index < 2 && "there are only two regions in a WhileOp");
-    if (*index == 0)
-    {
-        regions.emplace_back(&getBody(), getBody().getArguments());
-        regions.emplace_back(getResults());
+    assert(llvm::is_contained({&getBody(), &getCond()}, point) &&
+            "there are only two regions in a WhileOp");
+    // The body region always branches back to the condition region.
+    if (point == getBody()) {
+        regions.emplace_back(&getCond(), getCond().getArguments());
         return;
     }
 
-    regions.emplace_back(&getCond(), getCond().getArguments());
+    regions.emplace_back(getResults());
+    regions.emplace_back(&getBody(), getBody().getArguments());
 }
 
 //===----------------------------------------------------------------------===//
 // DoWhileOp
 //===----------------------------------------------------------------------===//
 
-OperandRange mlir_ts::DoWhileOp::getSuccessorEntryOperands(std::optional<unsigned int> index)
+OperandRange mlir_ts::DoWhileOp::getEntrySuccessorOperands(RegionBranchPoint point)
 {
-    // TODO: review it
-    assert((!index || *index == 1) && "DoWhileOp is expected to branch only to the first region");
-
     return getInits();
 }
 
-void mlir_ts::DoWhileOp::getSuccessorRegions(std::optional<unsigned> index, ArrayRef<Attribute> operands,
-                                             SmallVectorImpl<RegionSuccessor> &regions)
+void mlir_ts::DoWhileOp::getSuccessorRegions(RegionBranchPoint point, SmallVectorImpl<RegionSuccessor> &regions)
 {
-    (void)operands;
-
-    if (!index)
-    {
-        regions.emplace_back(&getCond(), getCond().getArguments());
-        return;
-    }
-
-    // TODO: review it
-    assert(*index < 2 && "there are only two regions in a DoWhileOp");
-    if (*index == 1)
-    {
+    // The parent op always branches to the condition region.
+    if (point.isParent()) {
         regions.emplace_back(&getBody(), getBody().getArguments());
-        regions.emplace_back(getResults());
         return;
     }
 
+    assert(llvm::is_contained({&getCond(), &getBody()}, point) &&
+            "there are only two regions in a DoWhileOp");
+    // The body region always branches back to the condition region.
+    if (point == getCond()) {
+        regions.emplace_back(&getBody(), getBody().getArguments());
+        return;
+    }
+
+    regions.emplace_back(getResults());
     regions.emplace_back(&getCond(), getCond().getArguments());
 }
 
@@ -1405,42 +1493,25 @@ void mlir_ts::DoWhileOp::getSuccessorRegions(std::optional<unsigned> index, Arra
 // ForOp
 //===----------------------------------------------------------------------===//
 
-OperandRange mlir_ts::ForOp::getSuccessorEntryOperands(std::optional<unsigned int> index)
+OperandRange mlir_ts::ForOp::getEntrySuccessorOperands(RegionBranchPoint point)
 {
-    assert((!index || *index == 0) && "ForOp is expected to branch only to the first region");
-
     return getInits();
 }
 
-void mlir_ts::ForOp::getSuccessorRegions(std::optional<unsigned> index, ArrayRef<Attribute> operands, SmallVectorImpl<RegionSuccessor> &regions)
+void mlir_ts::ForOp::getSuccessorRegions(RegionBranchPoint point, SmallVectorImpl<RegionSuccessor> &regions)
 {
-    (void)operands;
-
-    if (!index)
-    {
-        regions.emplace_back(&getCond(), getCond().getArguments());
-        return;
-    }
-
-    // TODO: review it
-    //assert(*index < 2 && "there are only two regions in a ForOp");
-    if (*index == 0)
-    {
-        regions.emplace_back(&getIncr(), getIncr().getArguments());
-        regions.emplace_back(&getBody(), getBody().getArguments());
-        regions.emplace_back(getResults());
-        return;
-    }
-
-    regions.emplace_back(&getCond(), getCond().getArguments());
+    // Both the operation itself and the region may be branching into the body or
+    // back into the operation itself. It is possible for loop not to enter the
+    // body.
+    regions.push_back(RegionSuccessor(&getRegion(0), getRegionIterArgs()));
+    regions.push_back(RegionSuccessor(getResults()));
 }
 
 //===----------------------------------------------------------------------===//
 // SwitchOp
 //===----------------------------------------------------------------------===//
 
-void mlir_ts::SwitchOp::getSuccessorRegions(std::optional<unsigned> index, ArrayRef<Attribute> operands,
-                                            SmallVectorImpl<RegionSuccessor> &regions)
+void mlir_ts::SwitchOp::getSuccessorRegions(RegionBranchPoint point, SmallVectorImpl<RegionSuccessor> &regions)
 {
     regions.push_back(RegionSuccessor(&getCasesRegion()));
 }
@@ -1543,7 +1614,7 @@ struct RemoveStaticCondition : public OpRewritePattern<mlir_ts::IfOp>
             return failure();
         }
 
-        if (constant.getValue().cast<BoolAttr>().getValue())
+        if (cast<BoolAttr>(constant.getValue()).getValue())
         {
             replaceOpWithRegion(rewriter, op, op.getThenRegion());
         }
@@ -1597,8 +1668,8 @@ struct SimplifyStaticExpression : public OpRewritePattern<mlir_ts::LogicalBinary
     // TODO: complete it
     std::optional<bool> logicalOpResultOfConstants(unsigned int opCode, mlir::Attribute op1, mlir::Attribute op2) const {
 
-        auto op1Typed = op1.dyn_cast<mlir::TypedAttr>();
-        auto op2Typed = op2.dyn_cast<mlir::TypedAttr>();
+        auto op1Typed = dyn_cast<mlir::TypedAttr>(op1);
+        auto op2Typed = dyn_cast<mlir::TypedAttr>(op2);
         if (!op1Typed || !op2Typed)
         {
             return {};
@@ -1610,16 +1681,16 @@ struct SimplifyStaticExpression : public OpRewritePattern<mlir_ts::LogicalBinary
         }
 
         // strings
-        if (op1Typed.isa<mlir::StringAttr>())
+        if (isa<mlir::StringAttr>(op1Typed))
         {
             switch ((SyntaxKind)opCode)
             {
             case SyntaxKind::EqualsEqualsToken:
             case SyntaxKind::EqualsEqualsEqualsToken:
-                return op1Typed.cast<mlir::StringAttr>().getValue().equals(op2Typed.cast<mlir::StringAttr>().getValue());
+                return mlir::cast<mlir::StringAttr>(op1Typed).getValue().compare(cast<mlir::StringAttr>(op2Typed).getValue()) == 0;
             case SyntaxKind::ExclamationEqualsToken:
             case SyntaxKind::ExclamationEqualsEqualsToken:
-                return !op1Typed.cast<mlir::StringAttr>().getValue().equals(op2Typed.cast<mlir::StringAttr>().getValue());
+                return !cast<mlir::StringAttr>(op1Typed).getValue().compare(cast<mlir::StringAttr>(op2Typed).getValue()) == 0;
             }
         }
 
@@ -1660,37 +1731,57 @@ void mlir_ts::LogicalBinaryOp::getCanonicalizationPatterns(RewritePatternSet &re
     results.insert<SimplifyStaticExpression>(context);
 }
 
-void mlir_ts::GlobalOp::build(OpBuilder &builder, OperationState &result, Type type, bool isConstant, StringRef name, Attribute value,
-                              ArrayRef<NamedAttribute> attrs)
+void mlir_ts::GlobalOp::build(OpBuilder &builder, OperationState &result, Type type, bool isConstant, StringRef name, LLVM::Linkage linkage)
 {
-    result.addAttribute(SymbolTable::getSymbolAttrName(), builder.getStringAttr(name));
-    result.addAttribute("type", TypeAttr::get(type));
+    mlir_ts::GlobalOp::build(builder, result, type, isConstant, name, linkage, Attribute{});
+}
+
+void mlir_ts::GlobalOp::build(OpBuilder &builder, OperationState &result, Type type, bool isConstant, StringRef name, LLVM::Linkage linkage, Attribute value)
+{
+    mlir_ts::GlobalOp::build(builder, result, type, isConstant, name, linkage, value, ArrayRef<NamedAttribute>{});
+}
+
+void mlir_ts::GlobalOp::build(OpBuilder &builder, OperationState &result, Type type, bool isConstant, StringRef name, LLVM::Linkage linkage, ArrayRef<NamedAttribute> attrs)
+{
+    mlir_ts::GlobalOp::build(builder, result, type, isConstant, name, linkage, Attribute{}, attrs);
+}
+
+void mlir_ts::GlobalOp::build(OpBuilder &builder, OperationState &odsState, Type type, bool isConstant, StringRef sym_name, LLVM::Linkage linkage, Attribute value, ArrayRef<NamedAttribute> attrs)
+{
+    auto& prop = odsState.getOrAddProperties<Properties>();
+    prop.type = mlir::TypeAttr::get(type);
     if (isConstant)
     {
-        result.addAttribute("constant", builder.getUnitAttr());
+        prop.constant = builder.getUnitAttr();
     }
 
+    prop.sym_name = builder.getStringAttr(sym_name);
+    prop.linkage = LLVM::LinkageAttr::get(builder.getContext(), linkage);
     if (value)
     {
-        result.addAttribute("value", value);
+        prop.value = value;
     }
 
-    result.attributes.append(attrs.begin(), attrs.end());
-    result.addRegion();
+    // if (comdat)
+    // {
+    //     prop.comdat = comdat;
+    // }
+
+    odsState.attributes.append(attrs.begin(), attrs.end());
+
+    (void)odsState.addRegion();
 }
 
 //===----------------------------------------------------------------------===//
 // TryOp
 //===----------------------------------------------------------------------===//
 
-OperandRange mlir_ts::TryOp::getSuccessorEntryOperands(std::optional<unsigned int> index)
+OperandRange mlir_ts::TryOp::getEntrySuccessorOperands(RegionBranchPoint point)
 {
-    assert((!index || *index < 4) && "TryOp is expected to branch only into 3 regions");
-
     return getOperation()->getOperands();
 }
 
-void mlir_ts::TryOp::getSuccessorRegions(std::optional<unsigned> index, ArrayRef<Attribute> operands, SmallVectorImpl<RegionSuccessor> &regions)
+void mlir_ts::TryOp::getSuccessorRegions(RegionBranchPoint point, SmallVectorImpl<RegionSuccessor> &regions)
 {
     regions.push_back(RegionSuccessor(&getCleanup()));
     regions.push_back(RegionSuccessor(&getCatches()));
@@ -1701,8 +1792,7 @@ void mlir_ts::TryOp::getSuccessorRegions(std::optional<unsigned> index, ArrayRef
 // LabelOp
 //===----------------------------------------------------------------------===//
 
-void mlir_ts::LabelOp::getSuccessorRegions(std::optional<unsigned> index, ArrayRef<Attribute> operands,
-                                           SmallVectorImpl<RegionSuccessor> &regions)
+void mlir_ts::LabelOp::getSuccessorRegions(RegionBranchPoint point, SmallVectorImpl<RegionSuccessor> &regions)
 {
     regions.push_back(RegionSuccessor(&getLabelRegion()));
 }
@@ -1729,15 +1819,12 @@ void mlir_ts::LabelOp::addMergeBlock()
 // BodyInternalOp
 //===----------------------------------------------------------------------===//
 
-OperandRange mlir_ts::BodyInternalOp::getSuccessorEntryOperands(std::optional<unsigned int> index)
+OperandRange mlir_ts::BodyInternalOp::getEntrySuccessorOperands(RegionBranchPoint point)
 {
-    assert((!index || *index == 0) && "BodyInternalOp is expected to branch only to the first region");
-
     return getODSOperands(0);
 }
 
-void mlir_ts::BodyInternalOp::getSuccessorRegions(std::optional<unsigned> index, ArrayRef<Attribute> operands,
-                                                  SmallVectorImpl<RegionSuccessor> &regions)
+void mlir_ts::BodyInternalOp::getSuccessorRegions(RegionBranchPoint point, SmallVectorImpl<RegionSuccessor> &regions)
 {
     regions.push_back(RegionSuccessor(&getBody()));
 }
